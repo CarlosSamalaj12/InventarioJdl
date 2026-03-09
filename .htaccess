@@ -1,0 +1,13 @@
+﻿<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # WebSocket upgrade for Socket.IO
+  RewriteCond %{HTTP:Upgrade} =websocket [NC]
+  RewriteRule ^socket.io/(.*)$ ws://127.0.0.1:3001/socket.io/$1 [P,L]
+
+  # HTTP fallback for Socket.IO (polling)
+  RewriteRule ^socket.io/(.*)$ http://127.0.0.1:3001/socket.io/$1 [P,L]
+
+  # API reverse proxy to local Node server
+  RewriteRule ^api/(.*)$ http://127.0.0.1:3001/api/$1 [P,L]
+</IfModule>
