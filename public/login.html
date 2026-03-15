@@ -50,11 +50,40 @@
 
 <script>
 const $ = s => document.querySelector(s);
-const API_ORIGIN = location.port === "3001"
-  ? location.origin
-  : `${location.origin}/inventarioprincipal`;
-const userOptionsMap = new Map();
+const APP_BASE_PATH = (() => {
+  const parts = String(location.pathname || "")
+    .split("/")
+    .filter(Boolean);
+  const publicIndex = parts.findIndex((part) => part.toLowerCase() === "public");
+  if (publicIndex > 0) {
+    return `/${parts.slice(0, publicIndex).join("/")}`;
+  }
+  if (parts[0] && parts[0].toLowerCase() === "inventarioprincipal") {
+    return `/${parts[0]}`;
+  }
+  return "";
+})();
+const API_ORIGIN = `${location.origin}${APP_BASE_PATH}`;
 const loginUsers = [];
+const userOptionsMap = new Map();
+
+async function fetchLoginApi(path, init) {
+  return fetch(`${API_ORIGIN}${path}`, init);
+}
+
+
+function focusLoginPassword() {
+  const pick = $("#userPick");
+  const pass = $("#pass");
+  if (pick && document.activeElement === pick && typeof pick.blur === "function") {
+    pick.blur();
+  }
+  if (!pass) return;
+  requestAnimationFrame(() => {
+    pass.focus();
+    if (typeof pass.select === "function") pass.select();
+  });
+}
 
 function useCustomLoginSuggest() {
   const smallViewport = window.matchMedia?.("(max-width: 980px)")?.matches;
@@ -94,7 +123,7 @@ async function loadLoginUsers() {
   const list = $("#loginUserOptions");
   if (!pick || !list) return;
   try {
-    const r = await fetch(`${API_ORIGIN}/api/auth/users`);
+    const r = await fetchLoginApi(`/api/auth/users`);
     const rows = await r.json().catch(() => []);
     if (!r.ok || !Array.isArray(rows)) return;
 
@@ -177,7 +206,13 @@ function hideLoginUserSuggest() {
   box.classList.add("hidden");
 }
 
-function selectLoginUser(username) {
+function hasExactLoginUserMatch() {
+  const pick = $("#userPick");
+  const typed = String(pick?.value || "").trim();
+  return Boolean(typed && userOptionsMap.get(typed.toLowerCase()));
+}
+
+function selectLoginUser(username, { focusPassword = false } = {}) {
   const pick = $("#userPick");
   const user = $("#user");
   if (!pick || !user) return;
@@ -187,11 +222,19 @@ function selectLoginUser(username) {
     pick.value = key;
     user.value = key;
     setLoginAvatar("");
+    hideLoginUserSuggest();
+    if (focusPassword) focusLoginPassword();
     return;
   }
   pick.value = found.username;
   user.value = found.username;
   setLoginAvatar(found.avatar_url);
+  hideLoginUserSuggest();
+  if (focusPassword) {
+    focusLoginPassword();
+  } else if (typeof pick.blur === "function") {
+    pick.blur();
+  }
 }
 
 $("#btn").onclick = async () => {
@@ -210,7 +253,7 @@ $("#btn").onclick = async () => {
 
   btn.disabled = true;
   try {
-    const r = await fetch(`${API_ORIGIN}/api/auth/login`, {
+    const r = await fetchLoginApi(`/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password })
@@ -241,33 +284,58 @@ $("#pass").addEventListener("keydown", (e) => {
 });
 $("#userPick").addEventListener("focus", () => {
   syncLoginPickerMode();
+  if (hasExactLoginUserMatch()) {
+    hideLoginUserSuggest();
+    return;
+  }
   renderLoginUserSuggest($("#userPick").value || "");
 });
 $("#userPick").addEventListener("change", () => {
   syncPickedUserToForm();
   syncLoginPickerMode();
+  if (hasExactLoginUserMatch()) {
+    hideLoginUserSuggest();
+    focusLoginPassword();
+    return;
+  }
   renderLoginUserSuggest($("#userPick").value || "");
 });
 $("#userPick").addEventListener("input", () => {
   syncPickedUserToForm();
   syncLoginPickerMode();
+  if (hasExactLoginUserMatch()) {
+    hideLoginUserSuggest();
+    return;
+  }
   renderLoginUserSuggest($("#userPick").value || "");
 });
 $("#userPick").addEventListener("blur", () => {
   setTimeout(hideLoginUserSuggest, 140);
 });
-$("#loginUserSuggest").addEventListener("mousedown", (e) => {
+$("#userPick").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  if (!hasExactLoginUserMatch()) return;
+  e.preventDefault();
+  syncPickedUserToForm();
+  hideLoginUserSuggest();
+  focusLoginPassword();
+});
+$("#loginUserSuggest").addEventListener("pointerdown", (e) => {
   const btn = e.target?.closest ? e.target.closest(".loginPickItem") : null;
   if (!btn) return;
   e.preventDefault();
-  selectLoginUser(btn.dataset.user || "");
-  hideLoginUserSuggest();
+  selectLoginUser(btn.dataset.user || "", { focusPassword: true });
 });
-$("#loginUserSuggest").addEventListener("click", (e) => {
-  const btn = e.target?.closest ? e.target.closest(".loginPickItem") : null;
-  if (!btn) return;
-  selectLoginUser(btn.dataset.user || "");
+document.addEventListener("pointerdown", (e) => {
+  const pick = $("#userPick");
+  const box = $("#loginUserSuggest");
+  const target = e.target;
+  if (!pick || !box || !target) return;
+  if (pick.contains?.(target) || box.contains?.(target)) return;
   hideLoginUserSuggest();
+  if (hasExactLoginUserMatch()) {
+    focusLoginPassword();
+  }
 });
 
 setLoginAvatar("");
@@ -277,3 +345,12 @@ loadLoginUsers();
 </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+

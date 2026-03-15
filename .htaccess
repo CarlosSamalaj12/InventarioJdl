@@ -1,13 +1,19 @@
-﻿<IfModule mod_rewrite.c>
+<IfModule mod_rewrite.c>
   RewriteEngine On
+  RewriteBase /inventarioPrincipal/
 
-  # WebSocket upgrade for Socket.IO
+  # Keep existing static files/directories served by Apache.
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Socket.IO WebSocket transport.
   RewriteCond %{HTTP:Upgrade} =websocket [NC]
-  RewriteRule ^socket.io/(.*)$ ws://127.0.0.1:3001/socket.io/$1 [P,L]
+  RewriteRule ^socket\.io/(.*)$ ws://127.0.0.1:3001/socket.io/$1 [P,L,NC]
 
-  # HTTP fallback for Socket.IO (polling)
-  RewriteRule ^socket.io/(.*)$ http://127.0.0.1:3001/socket.io/$1 [P,L]
+  # Socket.IO HTTP fallback (polling).
+  RewriteRule ^socket\.io/(.*)$ http://127.0.0.1:3001/socket.io/$1 [P,L,NC]
 
-  # API reverse proxy to local Node server
-  RewriteRule ^api/(.*)$ http://127.0.0.1:3001/api/$1 [P,L]
+  # API reverse proxy to local Node backend.
+  RewriteRule ^api/(.*)$ http://127.0.0.1:3001/api/$1 [P,L,NC]
 </IfModule>

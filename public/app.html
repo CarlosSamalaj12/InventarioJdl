@@ -69,6 +69,7 @@
 </button>
 <div class="menuGroupBody">
 <button class="menuBtn" data-section="r-corte-diario">Corte diario</button>
+<button class="menuBtn" data-section="r-cuadres-caja">Cuadres de caja</button>
 <button class="menuBtn" data-section="r-entradas">Entradas</button>
 <button class="menuBtn" data-section="r-salidas">Salidas</button>
 <button class="menuBtn" data-section="r-pedidos">Pedidos</button>
@@ -615,6 +616,7 @@
 </div>
         <div class="view hidden" id="view-cuadre-caja">
 <div class="card light">
+<div class="cuadreStickyHead">
 <div class="cardTitle">Cuadre de caja</div>
 <div class="grid4">
 <div>
@@ -632,52 +634,169 @@
 </div>
 <div>
 <label class="lbl">Responsable</label>
-<input class="in" id="cuadreResponsable" />
+<input class="in" id="cuadreResponsable" readonly aria-readonly="true" tabindex="-1" />
 </div>
 </div>
-<div class="addRow" style="justify-content:flex-end; gap:8px">
+<div class="addRow cuadreActions">
 <button class="btn soft" id="cuadreClear" type="button">Limpiar</button>
 <button class="btn soft" id="cuadreSearch" type="button">Cargar</button>
 <button class="btn soft" id="cuadrePrintPos" type="button">Imprimir POS 80mm</button>
 <button class="btn soft" id="cuadrePrintCarta" type="button">Imprimir Carta</button>
 <button class="btn ok" id="cuadreSave" type="button">Guardar cuadre</button>
 </div>
-<div class="tableWrap repTableScroll">
-<table class="tbl grid">
+<div class="cuadreResumeGrid">
+<div class="cuadreResumeCard">
+<span class="cuadreResumeLabel">Total efectivo</span>
+<strong id="cuadreTotalEfectivo">Q0.00</strong>
+</div>
+<div class="cuadreResumeCard">
+<span class="cuadreResumeLabel">Total cobro</span>
+<strong id="cuadreTotalCobro">Q0.00</strong>
+</div>
+<div class="cuadreResumeCard">
+<span class="cuadreResumeLabel">Venta por ambiente</span>
+<strong id="cuadreTotalVentaAmbiente">Q0.00</strong>
+</div>
+<div class="cuadreResumeCard accent">
+<span class="cuadreResumeLabel">Gran total reporte</span>
+<strong id="cuadreGranTotal">Q0.00</strong>
+</div>
+</div>
+</div>
+<div class="cuadreShell">
+<div class="cuadreMain">
+<section class="cuadreBlock">
+<div class="cuadreBlockHead">
+<div>
+<div class="cardTitle">Efectivo</div>
+<div class="note">Agrega denominaciones dinamicamente. Incluye una fila fija de $20 con cambio a Q7.30.</div>
+</div>
+<div class="addRow">
+<input class="in cuadreDenomInput" id="cuadreNewDenom" type="number" min="0.01" step="0.01" placeholder="Nueva denominacion" />
+<button class="btn soft btn-sm" id="cuadreAddDenom" type="button">Agregar denominacion</button>
+</div>
+</div>
+<div class="tableWrap repTableScroll cuadreDenomTableWrap">
+<table class="tbl grid cuadreDenomTable">
+<thead>
+<tr>
+<th>Denominacion</th>
+<th>Cantidad</th>
+<th>Subtotal</th>
+<th>Accion</th>
+</tr>
+</thead>
 <tbody id="cuadreCashRows">
 </tbody>
 </table>
 </div>
-<input class="in" id="cuadreMonedasSueltas" />
-<span id="cuadreMonedasSueltasLbl">
-</span>
-<input class="in" id="cuadreDolares" />
-<input class="in" id="cuadreVisa" />
-<input class="in" id="cuadreBancos" />
-<input class="in" id="cuadreCxcTrabajadores" />
-<input class="in" id="cuadreCxcHabitaciones" />
-<input class="in" id="cuadreDay" />
-<span id="cuadreTotalEfectivo">
-</span>
-<span id="cuadreTotalCobro">
-</span>
+<div class="cuadreMiniGrid">
+<div>
+<label class="lbl">Visa</label>
+<input class="in" id="cuadreVisa" type="number" min="0" step="0.01" placeholder="0.00" />
+</div>
+<div>
+<label class="lbl">Bancos</label>
+<input class="in" id="cuadreBancos" type="number" min="0" step="0.01" placeholder="0.00" />
+</div>
+<div>
+<label class="lbl">CxC Trabajadores</label>
+<input class="in" id="cuadreCxcTrabajadores" type="number" min="0" step="0.01" placeholder="0.00" />
+</div>
+<div>
+<label class="lbl">CxC Habitaciones</label>
+<input class="in" id="cuadreCxcHabitaciones" type="number" min="0" step="0.01" placeholder="0.00" />
+</div>
+<div>
+<label class="lbl">Pase Consumible</label>
+<input class="in" id="cuadrePaseConsumible" type="number" min="0" step="0.01" placeholder="0.00" />
+</div>
+</div>
+</section>
+<section class="cuadreBlock">
+<div class="cuadreBlockHead">
+<div>
+<div class="cardTitle">Ventas por ambiente</div>
+<div class="note">Aqui llenas el nombre del ambiente y su monto. Si no existe, usa "Agregar ambiente".</div>
+</div>
 <button class="btn soft btn-sm" id="cuadreAddVentaRow" type="button">Agregar ambiente</button>
+</div>
+<div class="tableWrap repTableScroll">
 <table class="tbl grid">
 <tbody id="cuadreVentasList">
 </tbody>
 </table>
-<span id="cuadreTotalVentaAmbiente">
-</span>
-<input class="in" id="cuadrePedidosNilas" />
-<input class="in" id="cuadreCortesias" />
-<span id="cuadreGranTotal">
-</span>
+</div>
+</section>
+<section class="cuadreBlock">
+<div>
+<div class="cardTitle">Pedidos y cortesia</div>
+<div class="note">La cortesia se llena en este bloque, no en la tabla de detalle.</div>
+</div>
+<div class="grid2">
+<div>
+<label class="lbl">Pedidos Nilas</label>
+<input class="in" id="cuadrePedidosNilas" type="number" min="0" step="0.01" placeholder="0.00" />
+</div>
+<div>
+<label class="lbl">Cortesias</label>
+<input class="in" id="cuadreCortesias" type="number" min="0" step="0.01" placeholder="0.00" />
+</div>
+</div>
+</section>
+<section class="cuadreBlock">
+<div class="cuadreBlockHead">
+<div>
+<div class="cardTitle">Detalle adicional</div>
+<div class="note">Observaciones o desglose adicional para el cierre.</div>
+</div>
 <button class="btn soft btn-sm" id="cuadreAddDetailRow" type="button">Agregar fila</button>
+</div>
+<div class="tableWrap repTableScroll">
 <table class="tbl grid">
 <tbody id="cuadreDetailList">
 </tbody>
 </table>
+</div>
+</section>
 <div class="pill" id="cuadreMeta">Sin datos</div>
+</div>
+<aside class="cuadrePreviewWrap">
+<div class="cuadrePreviewCard">
+<div class="cuadrePreviewHead">
+<span class="cuadrePreviewEyebrow">Vista previa</span>
+<strong>Ticket de cuadre</strong>
+</div>
+<div class="cuadreTicket" id="cuadreTicketPreview">
+<div class="cuadreTicketBrand">Jardines del Lago</div>
+<div class="cuadreTicketMeta">
+<div><span>Fecha</span><strong id="cuadrePreviewFecha">-</strong></div>
+<div><span>Bodega</span><strong id="cuadrePreviewBodega">-</strong></div>
+<div><span>Responsable</span><strong id="cuadrePreviewResponsable">-</strong></div>
+</div>
+<div class="cuadreTicketSection">
+<div class="cuadreTicketTitle">Efectivo</div>
+<div class="cuadreTicketLines" id="cuadrePreviewCashLines"></div>
+<div class="cuadreTicketLine total"><span>Dolares a quetzales</span><strong id="cuadrePreviewTotalDolaresQtz">Q0.00</strong></div>
+<div class="cuadreTicketLine total strong"><span>Total efectivo</span><strong id="cuadrePreviewTotalEfectivo">Q0.00</strong></div>
+</div>
+<div class="cuadreTicketSection">
+<div class="cuadreTicketTitle">Otros cobros</div>
+<div class="cuadreTicketLines" id="cuadrePreviewPaymentLines"></div>
+<div class="cuadreTicketLine total"><span>Total cobro</span><strong id="cuadrePreviewTotalCobro">Q0.00</strong></div>
+</div>
+<div class="cuadreTicketSection">
+<div class="cuadreTicketTitle">Ventas y extras</div>
+<div class="cuadreTicketLines" id="cuadrePreviewVentasLines"></div>
+<div class="cuadreTicketLine total"><span>Pedidos Nilas</span><strong id="cuadrePreviewPedidosNilas">Q0.00</strong></div>
+<div class="cuadreTicketLine total"><span>Cortesias</span><strong id="cuadrePreviewCortesias">Q0.00</strong></div>
+<div class="cuadreTicketLine total strong"><span>Gran total</span><strong id="cuadrePreviewGranTotal">Q0.00</strong></div>
+</div>
+<div class="cuadreTicketFooter" id="cuadrePreviewMetaNote">Borrador local del usuario actual.</div>
+</div>
+</div>
+</aside>
+</div>
 </div>
 </div>
         <div class="view hidden" id="view-categorias">
@@ -1242,6 +1361,56 @@
 </div>
 </div>
 </div>
+        <div class="view hidden" id="view-r-cuadres-caja">
+<div class="card light">
+<div class="cardTitle">Reporte cuadres de caja</div>
+<div class="grid4">
+<div>
+<label class="lbl">Fecha</label>
+<input class="in" id="repCuadreFecha" type="date" />
+</div>
+<div>
+<label class="lbl">Bodega</label>
+<select class="in" id="repCuadreWarehouse">
+</select>
+</div>
+<div>
+<label class="lbl">Responsable</label>
+<input class="in" id="repCuadreResponsable" placeholder="Nombre del responsable" />
+</div>
+<div>
+<label class="lbl">Acciones</label>
+<div class="addRow" style="justify-content:flex-start; gap:8px">
+<button class="btn soft" id="repCuadreClear" type="button">Limpiar</button>
+<button class="btn soft" id="repCuadreSearch" type="button">Buscar</button>
+</div>
+</div>
+</div>
+<div class="note" id="repCuadreResume"><span class="pill ghost">Usa los filtros y presiona Buscar.</span></div>
+<div class="tableWrap repTableScroll" style="margin-top:10px;">
+<table class="tbl grid">
+<thead>
+<tr>
+<th>Fecha</th>
+<th>Bodega</th>
+<th>Responsable</th>
+<th>Total efectivo</th>
+<th>Total cobro</th>
+<th>Venta ambiente</th>
+<th>Gran total</th>
+<th>Actualizado</th>
+<th>Acciones</th>
+</tr>
+</thead>
+<tbody id="repCuadreList">
+<tr>
+<td colspan="9">Usa los filtros y presiona Buscar.</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
         <div class="view hidden" id="view-r-entradas">
 <div class="card light">
 <div class="cardTitle">Reporte entradas</div>
@@ -1428,32 +1597,84 @@
 </div>
         <div class="view hidden" id="view-r-pedidos">
 <div class="card light">
-<input id="repPedId" />
-<select id="repPedEstado">
+<div class="cardTitle">Reporte pedidos</div>
+<div class="uiFormLayout">
+<div class="grid4">
+<div>
+<label class="lbl" for="repPedId">Pedido</label>
+<input class="in" id="repPedId" />
+</div>
+<div>
+<label class="lbl" for="repPedEstado">Estado</label>
+<select class="in" id="repPedEstado">
 </select>
-<input id="repPedDateFrom" type="date" />
-<input id="repPedDateTo" type="date" />
-<select id="repPedDateMode">
+</div>
+<div>
+<label class="lbl" for="repPedDateFrom">Desde</label>
+<input class="in" id="repPedDateFrom" type="date" />
+</div>
+<div>
+<label class="lbl" for="repPedDateTo">Hasta</label>
+<input class="in" id="repPedDateTo" type="date" />
+</div>
+</div>
+<div class="grid4">
+<div>
+<label class="lbl" for="repPedDateMode">Tipo de fecha</label>
+<select class="in" id="repPedDateMode">
 </select>
-<select id="repPedWarehouseReq">
+</div>
+<div>
+<label class="lbl" for="repPedWarehouseReq">Bodega solicitante</label>
+<select class="in" id="repPedWarehouseReq">
 </select>
-<select id="repPedWarehouseDesp">
+</div>
+<div>
+<label class="lbl" for="repPedWarehouseDesp">Bodega despacho</label>
+<select class="in" id="repPedWarehouseDesp">
 </select>
-<input id="repPedRequesterUser" />
-<input id="repPedDispatchUser" />
-<select id="repPedCategoria">
+</div>
+<div>
+<label class="lbl" for="repPedLote">Lote</label>
+<input class="in" id="repPedLote" />
+</div>
+</div>
+<div class="grid4">
+<div>
+<label class="lbl" for="repPedRequesterUser">Solicitante</label>
+<input class="in" id="repPedRequesterUser" />
+</div>
+<div>
+<label class="lbl" for="repPedDispatchUser">Usuario despacho</label>
+<input class="in" id="repPedDispatchUser" />
+</div>
+<div>
+<label class="lbl" for="repPedCategoria">Categoria</label>
+<select class="in" id="repPedCategoria">
 </select>
-<select id="repPedSubcategoria">
+</div>
+<div>
+<label class="lbl" for="repPedSubcategoria">Subcategoria</label>
+<select class="in" id="repPedSubcategoria">
 </select>
-<input id="repPedLote" />
-<input id="repPedPickProduct" />
+</div>
+</div>
+<div class="grid4">
+<div>
+<label class="lbl" for="repPedPickProduct">Producto</label>
+<input class="in" id="repPedPickProduct" />
+</div>
+</div>
 <input id="repPedQuery" type="hidden" />
+<div class="actionRow">
 <button id="repPedClear">
 </button>
 <button id="repPedSearch">
 </button>
 <button id="repPedExport">
 </button>
+</div>
+</div>
 <div id="repPedResume">
 </div>
 <div class="tableWrap repTableScroll" style="margin-top:10px;">
@@ -1493,32 +1714,79 @@
 </div>
         <div class="view hidden" id="view-r-transferencias">
 <div class="card light">
-<select id="repKarWarehouse">
+<div class="cardTitle">Kardex</div>
+<div class="uiFormLayout">
+<div class="grid4">
+<div>
+<label class="lbl" for="repKarWarehouse">Bodega</label>
+<select class="in" id="repKarWarehouse">
 </select>
-<input id="repKarDateFrom" type="date" />
-<input id="repKarDateTo" type="date" />
-<select id="repKarTipo">
+</div>
+<div>
+<label class="lbl" for="repKarDateFrom">Desde</label>
+<input class="in" id="repKarDateFrom" type="date" />
+</div>
+<div>
+<label class="lbl" for="repKarDateTo">Hasta</label>
+<input class="in" id="repKarDateTo" type="date" />
+</div>
+<div>
+<label class="lbl" for="repKarTipo">Tipo</label>
+<select class="in" id="repKarTipo">
 </select>
-<select id="repKarMovimiento">
+</div>
+</div>
+<div class="grid4">
+<div>
+<label class="lbl" for="repKarMovimiento">Movimiento</label>
+<input class="in" id="repKarMovimiento" />
+</div>
+<div>
+<label class="lbl" for="repKarCategoria">Categoria</label>
+<select class="in" id="repKarCategoria">
 </select>
-<select id="repKarCategoria">
+</div>
+<div>
+<label class="lbl" for="repKarSubcategoria">Subcategoria</label>
+<select class="in" id="repKarSubcategoria">
 </select>
-<select id="repKarSubcategoria">
-</select>
-<input id="repKarUsuario" />
-<input id="repKarSolicitante" />
-<input id="repKarDocumento" />
-<input id="repKarLote" />
-<input id="repKarPickProduct" />
+</div>
+<div>
+<label class="lbl" for="repKarDocumento">Documento</label>
+<input class="in" id="repKarDocumento" />
+</div>
+</div>
+<div class="grid4">
+<div>
+<label class="lbl" for="repKarUsuario">Usuario</label>
+<input class="in" id="repKarUsuario" />
+</div>
+<div>
+<label class="lbl" for="repKarSolicitante">Solicitante</label>
+<input class="in" id="repKarSolicitante" />
+</div>
+<div>
+<label class="lbl" for="repKarLote">Lote</label>
+<input class="in" id="repKarLote" />
+</div>
+<div>
+<label class="lbl" for="repKarPickProduct">Producto</label>
+<input class="in" id="repKarPickProduct" />
+</div>
+</div>
 <input id="repKarQuery" type="hidden" />
+<div class="actionRow">
 <button id="repKarClear">
 </button>
 <button id="repKarSearch">
 </button>
 <button id="repKarExport">
 </button>
+</div>
+</div>
 <div id="repKarResume">
 </div>
+<div class="tableWrap repTableScroll" style="margin-top:10px;">
 <table class="tbl grid">
 <thead>
 <tr>
@@ -1552,38 +1820,61 @@
 </table>
 </div>
 </div>
+</div>
         <div class="view hidden" id="view-r-existencias">
 <div class="card light">
-<select id="repExistWarehouse">
+<div class="cardTitle">Reporte existencias</div>
+<div class="uiFormLayout">
+<div class="grid4">
+<div>
+<label class="lbl" for="repExistWarehouse">Bodega</label>
+<select class="in" id="repExistWarehouse">
 </select>
-<select id="repExistCategoria">
+</div>
+<div>
+<label class="lbl" for="repExistCategoria">Categoria</label>
+<select class="in" id="repExistCategoria">
 </select>
-<select id="repExistSubcategoria">
+</div>
+<div>
+<label class="lbl" for="repExistSubcategoria">Subcategoria</label>
+<select class="in" id="repExistSubcategoria">
 </select>
-<input id="repExistPickProduct" />
+</div>
+<div>
+<label class="lbl" for="repExistPickProduct">Producto</label>
+<input class="in" id="repExistPickProduct" />
+</div>
+</div>
 <input id="repExistQuery" type="hidden" />
+<div class="actionRow">
 <button id="repExistClear">Limpiar
 </button>
 <button id="repExistSearch">Buscar
 </button>
 <button id="repExistExport">Exportar
 </button>
-<span id="repHeadBodega">
+</div>
+</div>
+<div class="statusGroup" style="margin:10px 0 0;">
+<span class="pill ghost" id="repHeadBodega">
 </span>
-<span id="repHeadProducto">
+<span class="pill ghost" id="repHeadProducto">
 </span>
-<span id="repHeadSku">
+<span class="pill ghost" id="repHeadSku">
 </span>
-<span id="repHeadStock">
+<span class="pill ghost" id="repHeadStock">
 </span>
-<span id="repHeadEstado">
+<span class="pill ghost" id="repHeadEstado">
 </span>
-<span id="repHeadNivel">
+<span class="pill ghost" id="repHeadNivel">
 </span>
-<span id="repHeadRegla">
+<span class="pill ghost" id="repHeadRegla">
 </span>
+</div>
 <div id="repExistResume">
 </div>
+<div class="tableWrap repTableScroll" style="margin-top:10px;">
 <table class="tbl grid">
 <thead>
 <tr>
@@ -1606,18 +1897,39 @@
 </table>
 </div>
 </div>
+</div>
         <div class="view hidden" id="view-r-auditoria-sensibles">
 <div class="card light">
-<input id="repAudDateFrom" type="date" />
-<input id="repAudDateTo" type="date" />
-<input id="repAudAction" />
-<input id="repAudQuery" />
+<div class="cardTitle">Auditoria sensible</div>
+<div class="uiFormLayout">
+<div class="grid4">
+<div>
+<label class="lbl" for="repAudDateFrom">Desde</label>
+<input class="in" id="repAudDateFrom" type="date" />
+</div>
+<div>
+<label class="lbl" for="repAudDateTo">Hasta</label>
+<input class="in" id="repAudDateTo" type="date" />
+</div>
+<div>
+<label class="lbl" for="repAudAction">Accion</label>
+<input class="in" id="repAudAction" />
+</div>
+<div>
+<label class="lbl" for="repAudQuery">Busqueda</label>
+<input class="in" id="repAudQuery" />
+</div>
+</div>
+<div class="actionRow">
 <button id="repAudClear">
 </button>
 <button id="repAudSearch">
 </button>
+</div>
+</div>
 <div id="repAudMeta">
 </div>
+<div class="tableWrap repTableScroll" style="margin-top:10px;">
 <table class="tbl grid">
 <thead>
 <tr>
@@ -1637,14 +1949,16 @@
 </tr>
 </tbody>
 </table>
-<span id="repMoveDays">
+<span class="hidden" id="repMoveDays">
 </span>
-<span id="repDateFrom">
+<span class="hidden" id="repDateFrom">
 </span>
-<span id="repDateTo">
+<span class="hidden" id="repDateTo">
 </span>
+</div>
 <div id="repAlertResume">
 </div>
+<div class="tableWrap repTableScroll" style="margin-top:10px;">
 <table class="tbl grid">
 <thead>
 <tr>
@@ -1664,6 +1978,7 @@
 </tr>
 </tbody>
 </table>
+</div>
 </div>
 </div>
       </section>

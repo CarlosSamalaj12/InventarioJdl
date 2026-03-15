@@ -14,11 +14,33 @@ import { pool } from "./db.js";
 
 const app = express();
 const httpServer = createServer(app);
+const HOST = String(process.env.HOST || "0.0.0.0").trim() || "0.0.0.0";
+const PORT = Number(process.env.PORT || 3001) || 3001;
+const allowedOrigins = new Set(
+  String(process.env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean)
+);
+
+const corsOriginResolver = (origin, callback) => {
+  if (!origin) return callback(null, true);
+  // Do not throw 500 for disallowed browser origins; just omit CORS headers.
+  if (!allowedOrigins.size || allowedOrigins.has(origin)) return callback(null, true);
+  return callback(null, false);
+};
+
+const corsOptions = {
+  origin: corsOriginResolver,
+  credentials: true,
+};
+
 const io = new SocketIOServer(httpServer, {
-  cors: { origin: true, credentials: true },
+  cors: corsOptions,
 });
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -415,12 +437,11 @@ function buildTokenizedLikeFilter(rawInput, columns = [], paramPrefix = "qtk") {
     String(value || "")
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
-      .replace(/ñ/g, "n")
-      .replace(/Ñ/g, "n")
+      .replace(/[\u00f1\u00d1]/g, "n")
       .toLowerCase()
       .trim();
   const normalizedSqlExpr = (col) =>
-    `LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col}, 'á','a'), 'é','e'), 'í','i'), 'ó','o'), 'ú','u'), 'Á','a'), 'É','e'), 'Í','i'), 'Ó','o'), 'Ú','u'), 'ñ','n'), 'Ñ','n'))`;
+    `LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col}, '\u00e1','a'), '\u00e9','e'), '\u00ed','i'), '\u00f3','o'), '\u00fa','u'), '\u00c1','a'), '\u00c9','e'), '\u00cd','i'), '\u00d3','o'), '\u00da','u'), '\u00f1','n'), '\u00d1','n'))`;
   const tokens = raw
     .split(/\s+/)
     .map((t) => normalizeSearchToken(t))
@@ -1061,6 +1082,22 @@ function ymd(value) {
   }
 }
 
+function normalizeYmdInput(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  if (/^\d{2}-\d{2}-\d{4}$/.test(raw)) {
+    const [dd, mm, yyyy] = raw.split("-");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+    const [dd, mm, yyyy] = raw.split("/");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return ymd(raw) || "";
+}
+
 function addDaysYmd(baseYmd, days) {
   const d = new Date(`${baseYmd}T00:00:00`);
   d.setDate(d.getDate() + Number(days || 0));
@@ -1075,8 +1112,10 @@ function dmy(value) {
 }
 
 const CUADRE_DENOMINACIONES = [0.25, 0.5, 1, 5, 10, 20, 50, 100, 200];
+const CUADRE_DOLAR_DENOM_USD = 1;
+const CUADRE_DOLAR_TIPO_CAMBIO = 7.3;
 const CUADRE_VENTAS_KEYS = ["flor_cafe", "restaurante", "nilas", "eldeck", "cactus", "gelato", "jazmin"];
-const CUADRE_PAGOS_KEYS = ["dolares", "visa", "bancos", "cxc_trabajadores", "cxc_habitaciones", "day"];
+const CUADRE_PAGOS_KEYS = ["visa", "bancos", "cxc_trabajadores", "cxc_habitaciones", "pase_consumible"];
 const CUADRE_EXTRAS_KEYS = ["pedidos_nilas", "cortesias"];
 
 function clampText(v, maxLen = 120) {
@@ -1143,8 +1182,10 @@ function normalizeCuadrePayload(rawPayload = {}, fallback = {}) {
 
   const pagos = {};
   for (const k of CUADRE_PAGOS_KEYS) {
-    pagos[k] = Math.max(0, numMoney(rawPagos[k] ?? previousPagos[k] ?? 0));
+    const legacyKey = k === "pase_consumible" ? "day" : null;
+    pagos[k] = Math.max(0, numMoney(rawPagos[k] ?? (legacyKey ? rawPagos[legacyKey] : undefined) ?? previousPagos[k] ?? (legacyKey ? previousPagos[legacyKey] : undefined) ?? 0));
   }
+  pagos.dolares_cantidad = Math.max(0, numQty(rawPagos.dolares_cantidad ?? previousPagos.dolares_cantidad ?? 0));
 
   const ventas = {};
   for (const k of CUADRE_VENTAS_KEYS) {
@@ -1201,7 +1242,7 @@ function normalizeCuadrePayload(rawPayload = {}, fallback = {}) {
     })
     .filter(Boolean);
 
-  const monedas_sueltas = Math.max(0, numMoney(raw.monedas_sueltas ?? previous.monedas_sueltas ?? 0));
+  const legacyDolaresQuetzales = Math.max(0, numMoney(rawPagos.dolares ?? previousPagos.dolares ?? 0));
   const sede = clampText(raw.sede ?? previous.sede ?? "", 120);
   const responsable = clampText(raw.responsable ?? previous.responsable ?? "", 120);
 
@@ -1209,7 +1250,11 @@ function normalizeCuadrePayload(rawPayload = {}, fallback = {}) {
     (acc, d) => acc + Number(monedas[String(d)] || 0) * Number(d),
     0
   );
-  const total_efectivo = Math.round((totalEfectivoDenominaciones + monedas_sueltas) * 100) / 100;
+  const total_dolares = Math.round((Number(pagos.dolares_cantidad || 0) * CUADRE_DOLAR_DENOM_USD) * 100) / 100;
+  const total_dolares_quetzales = pagos.dolares_cantidad > 0
+    ? Math.round((total_dolares * CUADRE_DOLAR_TIPO_CAMBIO) * 100) / 100
+    : legacyDolaresQuetzales;
+  const total_efectivo = Math.round((totalEfectivoDenominaciones + total_dolares_quetzales) * 100) / 100;
   const total_cobro =
     Math.round((total_efectivo + CUADRE_PAGOS_KEYS.reduce((acc, k) => acc + Number(pagos[k] || 0), 0)) * 100) / 100;
 
@@ -1221,11 +1266,13 @@ function normalizeCuadrePayload(rawPayload = {}, fallback = {}) {
     Math.round((total_venta_ambiente + CUADRE_EXTRAS_KEYS.reduce((acc, k) => acc + Number(extras[k] || 0), 0)) * 100) /
     100;
 
+  pagos.dolares_total = total_dolares;
+  pagos.dolares_quetzales = total_dolares_quetzales;
+
   const payload = {
     sede,
     responsable,
     monedas,
-    monedas_sueltas,
     pagos,
     ventas,
     ventas_rows,
@@ -2247,9 +2294,9 @@ async function prewarmDashboardCache() {
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { username, password } = req.body || {};
-    if (!username || !password) return res.status(400).json({ error: "Falta usuario o contraseña" });
+    if (!username || !password) return res.status(400).json({ error: "Falta usuario o contrasena" });
 
-    // Tabla/columnas en español -> alias a nombres usados por la app
+    // Tabla/columnas en espanol -> alias a nombres usados por la app
     let rows = [];
     try {
       [rows] = await pool.query(
@@ -2289,10 +2336,10 @@ app.post("/api/auth/login", async (req, res) => {
       );
     }
     const u = rows[0];
-    if (!u || !u.active) return res.status(401).json({ error: "Usuario inválido o inactivo" });
+    if (!u || !u.active) return res.status(401).json({ error: "Usuario invalido o inactivo" });
 
     const ok = await bcrypt.compare(password, u.pass_hash || "");
-    if (!ok) return res.status(401).json({ error: "Contraseña incorrecta" });
+    if (!ok) return res.status(401).json({ error: "Contrasena incorrecta" });
 
     const token = signToken(u);
     res.json({
@@ -4436,17 +4483,82 @@ app.get("/api/cuadre-caja/context", auth, requirePermission("section.view.cuadre
   }
 });
 
+app.get("/api/reportes/cuadre-caja", auth, requirePermission("section.view.cuadre-caja", "ver reporte de cuadres de caja"), async (req, res) => {
+  try {
+    const scope = await resolveCuadreScope(req.user);
+    const fechaRaw = String(req.query.fecha || "").trim();
+    const fecha = normalizeYmdInput(fechaRaw);
+    const responsable = String(req.query.responsable || "").trim();
+    const requested = Number(req.query.warehouse || 0) || 0;
+    const limit = Math.max(1, Math.min(300, Number(req.query.limit || 200)));
+
+    if (fechaRaw && !fecha) {
+      return res.status(400).json({ error: "Fecha invalida. Formato esperado: YYYY-MM-DD" });
+    }
+
+    let warehouseFilter = null;
+    if (scope.can_all_bodegas) {
+      warehouseFilter = requested > 0 ? requested : null;
+    } else {
+      const allowedId = Number(scope.allowed_ids?.[0] || 0);
+      if (!allowedId) return res.json({ ok: true, rows: [] });
+      if (requested > 0 && requested !== allowedId) {
+        return res.status(403).json({ error: "Sin acceso a la bodega solicitada" });
+      }
+      warehouseFilter = allowedId;
+    }
+
+    const params = { limit };
+    const where = [];
+    if (fecha) {
+      where.push('cc.fecha=:fecha');
+      params['fecha'] = fecha;
+    }
+    if (warehouseFilter) {
+      where.push('cc.id_bodega=:id_bodega');
+      params['id_bodega'] = warehouseFilter;
+    }
+    if (responsable) {
+      where.push('cc.responsable LIKE :responsable');
+      params['responsable'] = `%${responsable}%`;
+    }
+
+    const sql = `SELECT cc.fecha,
+                        cc.id_bodega,
+                        b.nombre_bodega,
+                        cc.sede,
+                        cc.responsable,
+                        cc.total_efectivo,
+                        cc.total_cobro,
+                        cc.total_venta_ambiente,
+                        cc.gran_total_reporte,
+                        cc.actualizado_en
+                 FROM cuadre_caja cc
+                 INNER JOIN bodegas b ON b.id_bodega=cc.id_bodega
+                 ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+                 ORDER BY cc.fecha DESC, cc.actualizado_en DESC
+                 LIMIT :limit`;
+
+    const [rows] = await pool.query(sql, params);
+    return res.json({ ok: true, rows: Array.isArray(rows) ? rows : [] });
+  } catch (e) {
+    return res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
 app.get("/api/cuadre-caja", auth, requirePermission("section.view.cuadre-caja", "ver modulo cuadre de caja"), async (req, res) => {
   try {
     const scope = await resolveCuadreScope(req.user);
 
-    const fechaRaw = String(req.query.fecha || "").trim();
-    const fecha = fechaRaw || ymd(new Date()) || "";
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    const fechaSource = req.method === "POST" ? (req.body?.fecha || req.query.fecha) : req.query.fecha;
+    const fechaRaw = String(fechaSource || "").trim();
+    const fecha = normalizeYmdInput(fechaRaw) || ymd(new Date()) || "";
+    if (fechaRaw && !fecha) {
       return res.status(400).json({ error: "Fecha invalida. Formato esperado: YYYY-MM-DD" });
     }
 
-    const requested = Number(req.query.warehouse || 0) || 0;
+    const warehouseSource = req.method === "POST" ? (req.body?.warehouse || req.query.warehouse) : req.query.warehouse;
+    const requested = Number(warehouseSource || 0) || 0;
     const id_bodega = requested > 0 ? requested : Number(scope.id_bodega_default || 0);
     if (!id_bodega) return res.status(400).json({ error: "No hay bodega disponible para el usuario" });
 
@@ -4526,8 +4638,9 @@ app.post(
   async (req, res) => {
     try {
       const scope = await resolveCuadreScope(req.user);
-      const fecha = String(req.body?.fecha || "").trim();
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      const fechaRaw = String(req.body?.fecha || "").trim();
+      const fecha = normalizeYmdInput(fechaRaw);
+      if (!fecha) {
         return res.status(400).json({ error: "Fecha invalida. Formato esperado: YYYY-MM-DD" });
       }
 
@@ -4588,24 +4701,30 @@ app.post(
     }
   }
 );
-app.get("/api/print/cuadre-caja", auth, requirePermission("section.view.cuadre-caja", "imprimir cuadre de caja"), async (req, res) => {
+app.all("/api/print/cuadre-caja", auth, requirePermission("section.view.cuadre-caja", "imprimir cuadre de caja"), async (req, res) => {
   try {
     const scope = await resolveCuadreScope(req.user);
-    const fechaRaw = String(req.query.fecha || "").trim();
-    const fecha = fechaRaw || ymd(new Date()) || "";
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    const fechaSource = req.method === "POST" ? (req.body?.fecha || req.query.fecha) : req.query.fecha;
+    const fechaRaw = String(fechaSource || "").trim();
+    const fecha = normalizeYmdInput(fechaRaw) || ymd(new Date()) || "";
+    if (fechaRaw && !fecha) {
       return res.status(400).send("Fecha invalida. Formato esperado: YYYY-MM-DD");
     }
 
-    const requested = Number(req.query.warehouse || 0) || 0;
+    const warehouseSource = req.method === "POST" ? (req.body?.warehouse || req.query.warehouse) : req.query.warehouse;
+    const requested = Number(warehouseSource || 0) || 0;
     const id_bodega = requested > 0 ? requested : Number(scope.id_bodega_default || 0);
     if (!id_bodega) return res.status(400).send("No hay bodega disponible para el usuario");
     if (!scope.can_all_bodegas && !scope.allowed_ids.includes(id_bodega)) {
       return res.status(403).send("Sin acceso a la bodega solicitada");
     }
 
-    const formatRaw = String(req.query.format || "carta").trim().toLowerCase();
+    const formatSource = req.method === "POST" ? (req.body?.format || req.query.format) : req.query.format;
+    const formatRaw = String(formatSource || "carta").trim().toLowerCase();
     const format = formatRaw === "pos" ? "pos" : "carta";
+    const payloadOverrideRaw = req.method === "POST"
+      ? String(req.body?.payload_override || "").trim()
+      : String(req.query.payload_override || "").trim();
 
     const [[bod]] = await pool.query(
       `SELECT nombre_bodega
@@ -4641,9 +4760,18 @@ app.get("/api/print/cuadre-caja", auth, requirePermission("section.view.cuadre-c
       }
     }
 
-    const normalized = normalizeCuadrePayload(parsedPayload, {
+    let payloadOverride = null;
+    if (payloadOverrideRaw) {
+      try {
+        const parsed = JSON.parse(payloadOverrideRaw);
+        if (parsed && typeof parsed === "object") payloadOverride = parsed;
+      } catch {}
+    }
+
+    const normalized = normalizeCuadrePayload(payloadOverride || parsedPayload, {
       sede: row?.sede || bod?.nombre_bodega || "",
       responsable: row?.responsable || "",
+      payload_json: parsedPayload,
     });
 
     const esc = (v) =>
@@ -4677,15 +4805,26 @@ app.get("/api/print/cuadre-caja", auth, requirePermission("section.view.cuadre-c
 
     const baseCss = format === "pos"
       ? `
-        @page { size: 80mm auto; margin: 3mm; }
-        body { width: 74mm; margin: 0 auto; font-family: Arial, sans-serif; font-size: 11px; color: #111; }
-        h1 { font-size: 14px; margin: 4px 0; text-align: center; }
-        .meta { text-align: center; font-size: 10px; margin-bottom: 6px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 6px; }
-        th, td { border-bottom: 1px dashed #bbb; padding: 3px 2px; vertical-align: top; }
+        @page { size: 80mm auto; margin: 4mm 3mm 4mm 5mm; }
+        body {
+          width: 71mm;
+          margin: 0 auto;
+          padding: 0 1.5mm 0 2mm;
+          font-family: "DejaVu Sans Mono", "Consolas", "Lucida Console", monospace;
+          font-size: 11px;
+          line-height: 1.28;
+          color: #111;
+          -webkit-font-smoothing: none;
+          text-rendering: optimizeLegibility;
+          box-sizing: border-box;
+        }
+        h1 { font-size: 14px; margin: 4px 0 5px; text-align: center; letter-spacing: .2px; }
+        .meta { text-align: center; font-size: 10px; margin-bottom: 7px; line-height: 1.3; }
+        table { width: 100%; border-collapse: collapse; margin-top: 6px; table-layout: fixed; }
+        th, td { border-bottom: 1px dashed #bbb; padding: 3px 3px 3px 4px; vertical-align: top; }
         th { text-align: left; font-size: 10px; }
-        td.n { text-align: right; white-space: nowrap; }
-        .section { margin-top: 8px; font-weight: bold; border-top: 1px solid #000; padding-top: 4px; }
+        td.n { text-align: right; white-space: nowrap; padding-right: 1px; }
+        .section { margin-top: 8px; font-weight: bold; border-top: 1px solid #000; padding: 4px 0 0 1px; }
         .tot { font-weight: bold; border-top: 1px solid #000; }
         .logo { display:block; margin:0 auto 4px; max-width:48mm; max-height:18mm; }
       `
@@ -4727,14 +4866,14 @@ app.get("/api/print/cuadre-caja", auth, requirePermission("section.view.cuadre-c
         const line = qty * Number(d);
         return `<tr><td>${fmtQty(qty)}</td><td>Q ${fmtMoney(d)}</td><td class="n">Q ${fmtMoney(line)}</td></tr>`;
       }).join("")}
-      <tr><td>${fmtMoney(p.monedas_sueltas || 0)}</td><td>Monedas sueltas</td><td class="n">Q ${fmtMoney(p.monedas_sueltas || 0)}</td></tr>
+      <tr><td>${fmtQty(pagos.dolares_cantidad || 0)}</td><td>$ ${fmtMoney(CUADRE_DOLAR_DENOM_USD)} x Q ${fmtMoney(CUADRE_DOLAR_TIPO_CAMBIO)}</td><td class="n">$ ${fmtMoney(pagos.dolares_total || 0)}</td></tr>
+      <tr><td colspan="2">Dolares a quetzales</td><td class="n">Q ${fmtMoney(pagos.dolares_quetzales || 0)}</td></tr>
       <tr class="tot"><td colspan="2">Total efectivo</td><td class="n">Q ${fmtMoney(normalized.total_efectivo)}</td></tr>
-      <tr><td colspan="2">Dolares</td><td class="n">Q ${fmtMoney(pagos.dolares || 0)}</td></tr>
       <tr><td colspan="2">Visa</td><td class="n">Q ${fmtMoney(pagos.visa || 0)}</td></tr>
       <tr><td colspan="2">Bancos</td><td class="n">Q ${fmtMoney(pagos.bancos || 0)}</td></tr>
       <tr><td colspan="2">CXC Trabajadores</td><td class="n">Q ${fmtMoney(pagos.cxc_trabajadores || 0)}</td></tr>
       <tr><td colspan="2">CXC Habitaciones</td><td class="n">Q ${fmtMoney(pagos.cxc_habitaciones || 0)}</td></tr>
-      <tr><td colspan="2">DAY</td><td class="n">Q ${fmtMoney(pagos.day || 0)}</td></tr>
+      <tr><td colspan="2">PASE CONSUMIBLE</td><td class="n">Q ${fmtMoney(pagos.pase_consumible || 0)}</td></tr>
       <tr class="tot"><td colspan="2">TOTAL COBRO</td><td class="n">Q ${fmtMoney(normalized.total_cobro)}</td></tr>
     </tbody>
   </table>
@@ -4764,7 +4903,7 @@ app.get("/api/print/cuadre-caja", auth, requirePermission("section.view.cuadre-c
     </tbody>
   </table>
 
-  <div class="meta" style="margin-top:8px">Actualizado: ${esc(row?.actualizado_en ? String(row.actualizado_en) : "-")}</div>
+  <div class="meta" style="margin-top:8px">Actualizado: ${esc(payloadOverride ? "Vista previa actual" : (row?.actualizado_en ? String(row.actualizado_en) : "-"))}</div>
   <script>window.print()</script>
 </body>
 </html>`;
@@ -6039,7 +6178,7 @@ app.get(
 
 
 /* =========================
-   PEDIDOS (TABLAS EN ESPAÑOL)
+   PEDIDOS (TABLAS EN ESPANOL)
 ========================= */
 app.post("/api/orders", auth, requirePermission("action.create_update", "crear pedidos"), enforceDailyCloseBeforeMutations, async (req, res) => {
   const { requested_from_warehouse_id, notes, lines } = req.body || {};
@@ -6049,7 +6188,7 @@ app.post("/api/orders", auth, requirePermission("action.create_update", "crear p
   if (!requester_pin) return res.status(400).json({ error: "Falta codigo del usuario solicitante" });
   if (!isValidOrderPin(requester_pin)) return res.status(400).json({ error: "El PIN de pedido debe tener entre 6 y 12 digitos" });
   if (!requested_from_warehouse_id) return res.status(400).json({ error: "Falta bodega origen/destino" });
-  if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "Pedido sin líneas" });
+  if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "Pedido sin lineas" });
   const requestedFromWarehouseId = Number(requested_from_warehouse_id || 0);
   if (!requestedFromWarehouseId) return res.status(400).json({ error: "Bodega que despacha invalida" });
   if (!beginIdempotentRequest(req, res, { pathKey: "/api/orders" })) {
@@ -6664,7 +6803,7 @@ app.post("/api/orders/:id/fulfill", auth, requirePermission("action.dispatch", "
   }
   const { lines = [], justificacion = null } = req.body || {};
   const justificacionTxt = String(justificacion || "").trim();
-  if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "Sin líneas a despachar" });
+  if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "Sin lineas a despachar" });
   if (!beginIdempotentRequest(req, res, { pathKey: `/api/orders/${id_pedido}/fulfill` })) {
     return res.status(409).json({ error: "Solicitud duplicada detectada. Espera unos segundos e intenta de nuevo." });
   }
@@ -7338,7 +7477,7 @@ app.get("/api/print/order/:id", auth, async (req, res) => {
     <div>
       <div class="muted">Solicita</div>
       <div><b>${oh.requester_name || ""}</b></div>
-      <div class="muted">Área/Bodega: ${oh.req_wh || ""}</div>
+      <div class="muted">Area/Bodega: ${oh.req_wh || ""}</div>
     </div>
     <div>
       <div class="muted">De bodega</div>
@@ -8304,8 +8443,8 @@ app.get("/api/health", async (req, res) => {
   }
 });
 
-httpServer.listen(process.env.PORT || 3000, () => {
-  console.log("Bodega API en puerto", process.env.PORT || 3000);
+httpServer.listen(PORT, HOST, () => {
+  console.log(`Bodega API en ${HOST}:${PORT}`);
   if (OPS_BACKUP_AUTO_ENABLED) {
     setTimeout(() => {
       createLogicalBackup({ trigger: "AUTO_STARTUP" }).catch((e) => console.error("Backup inicial fallo:", e));
@@ -8331,6 +8470,7 @@ httpServer.listen(process.env.PORT || 3000, () => {
     console.log("Dashboard prewarm deshabilitado por DASHBOARD_PREWARM=0");
   }
 });
+
 
 
 

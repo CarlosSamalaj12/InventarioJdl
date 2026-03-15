@@ -1003,8 +1003,253 @@ body.modal-open{
   font-size:13px;
 }
 .grid2{display:grid; grid-template-columns: repeat(2, 1fr); gap:10px}
+.cuadreStickyHead{
+  position:sticky;
+  top:10px;
+  z-index:20;
+  display:grid;
+  gap:14px;
+  margin-bottom:14px;
+  padding:14px;
+  border-radius:18px;
+  background:linear-gradient(180deg, rgba(15,23,42,.97), rgba(2,6,23,.95));
+  border:1px solid rgba(96,165,250,.18);
+  box-shadow:0 14px 28px rgba(2,6,23,.32);
+  backdrop-filter:blur(10px);
+}
+.cuadreShell{
+  display:grid;
+  grid-template-columns:minmax(0, 1.55fr) minmax(320px, .9fr);
+  gap:18px;
+  align-items:start;
+}
+.cuadreMain{
+  min-width:0;
+  display:grid;
+  gap:14px;
+}
+.cuadreActions{
+  justify-content:flex-end;
+}
+.cuadreResumeGrid{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0,1fr));
+  gap:10px;
+}
+.cuadreResumeCard{
+  padding:14px 16px;
+  border-radius:16px;
+  border:1px solid rgba(96,165,250,.24);
+  background:linear-gradient(180deg, rgba(15,23,42,.92), rgba(2,6,23,.76));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+.cuadreResumeCard.accent{
+  border-color:rgba(45,212,191,.34);
+  background:linear-gradient(180deg, rgba(8,47,73,.92), rgba(6,24,39,.88));
+}
+.cuadreResumeLabel{
+  display:block;
+  font-size:12px;
+  font-weight:800;
+  color:#94A3B8;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  margin-bottom:6px;
+}
+.cuadreResumeCard strong{
+  display:block;
+  font-size:28px;
+  line-height:1;
+  color:#F8FAFC;
+}
+.cuadreBlock{
+  padding:14px;
+  border-radius:18px;
+  border:1px solid rgba(148,163,184,.16);
+  background:linear-gradient(180deg, rgba(8,15,33,.82), rgba(2,6,23,.68));
+}
+.cuadreBlockHead{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+  flex-wrap:wrap;
+}
+.cuadreMiniGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:10px;
+}
+.cuadreDenomInput{
+  min-width:180px;
+}
+.cuadreDenomTableWrap{
+  border-radius:16px;
+  overflow:hidden;
+  border:1px solid rgba(96,165,250,.14);
+}
+.cuadreDenomTable{
+  table-layout:fixed;
+}
+.cuadreDenomTable th,
+.cuadreDenomTable td{
+  vertical-align:middle;
+}
+.cuadreDenomTable th:nth-child(1),
+.cuadreDenomTable td:nth-child(1){
+  width:130px;
+}
+.cuadreDenomTable th:nth-child(2),
+.cuadreDenomTable td:nth-child(2){
+  width:150px;
+}
+.cuadreDenomTable th:nth-child(3),
+.cuadreDenomTable td:nth-child(3){
+  width:120px;
+}
+.cuadreDenomTable th:nth-child(4),
+.cuadreDenomTable td:nth-child(4){
+  width:110px;
+}
+.cuadreDenomCol-label,
+.cuadreDenomCol-action{
+  text-align:center;
+}
+.cuadreDenomCol-qty{
+  text-align:center;
+}
+.cuadreDenomCol-total{
+  text-align:right;
+}
+.app .cuadreDenomTableWrap .in.cuadreQtyInput{
+  width:96px;
+  max-width:96px;
+  min-width:96px;
+  text-align:center;
+  padding-left:8px;
+  padding-right:8px;
+}
+.cuadreDenomBadge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:86px;
+  padding:8px 12px;
+  border-radius:999px;
+  background:rgba(37,99,235,.18);
+  border:1px solid rgba(96,165,250,.28);
+  font-weight:800;
+  color:#DBEAFE;
+}
+.cuadreLineTotal{
+  font-weight:800;
+  color:#7DD3FC;
+}
+.cuadrePreviewWrap{
+  position:sticky;
+  top:16px;
+}
+.cuadrePreviewCard{
+  border-radius:22px;
+  padding:16px;
+  border:1px solid rgba(45,212,191,.22);
+  background:
+    radial-gradient(circle at top, rgba(45,212,191,.12), transparent 34%),
+    linear-gradient(180deg, rgba(8,15,33,.95), rgba(2,6,23,.92));
+  box-shadow:0 18px 40px rgba(2,6,23,.38);
+}
+.cuadrePreviewHead{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  margin-bottom:14px;
+}
+.cuadrePreviewEyebrow{
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  color:#5EEAD4;
+  font-weight:900;
+}
+.cuadreTicket{
+  border-radius:20px;
+  padding:18px 16px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.98), rgba(241,245,249,.98));
+  color:#0F172A;
+  box-shadow:0 14px 28px rgba(15,23,42,.3);
+}
+.cuadreTicketBrand{
+  text-align:center;
+  font-size:18px;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  padding-bottom:12px;
+  border-bottom:1px dashed rgba(15,23,42,.22);
+}
+.cuadreTicketMeta,
+.cuadreTicketSection{
+  padding-top:12px;
+}
+.cuadreTicketMeta{
+  display:grid;
+  gap:8px;
+}
+.cuadreTicketMeta div,
+.cuadreTicketLine{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.cuadreTicketMeta span,
+.cuadreTicketLine span{
+  color:#475569;
+  font-size:12px;
+}
+.cuadreTicketMeta strong,
+.cuadreTicketLine strong{
+  color:#020617;
+  font-size:12px;
+  font-weight:900;
+}
+.cuadreTicketTitle{
+  margin-bottom:8px;
+  padding-bottom:6px;
+  border-bottom:1px dashed rgba(15,23,42,.18);
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.1em;
+  font-weight:900;
+}
+.cuadreTicketLines{
+  display:grid;
+  gap:6px;
+}
+.cuadreTicketLine.total{
+  margin-top:8px;
+}
+.cuadreTicketLine.strong span,
+.cuadreTicketLine.strong strong{
+  font-size:14px;
+  color:#020617;
+}
+.cuadreTicketEmpty{
+  color:#94A3B8;
+  font-style:italic;
+}
+.cuadreTicketFooter{
+  margin-top:14px;
+  padding-top:12px;
+  border-top:1px dashed rgba(15,23,42,.22);
+  text-align:center;
+  font-size:11px;
+  color:#64748B;
+}
 .importGrid{align-items:stretch}
-.importCard{
+.adminImportCard{
   background: linear-gradient(180deg, rgba(15,23,42,.78), rgba(2,6,23,.74));
   border:1px solid rgba(56,189,248,.28);
   border-radius:14px;
@@ -1051,6 +1296,14 @@ body.modal-open{
   .grid3{grid-template-columns:1fr}
   .grid4{grid-template-columns:1fr}
   .grid2{grid-template-columns:1fr}
+  .cuadreStickyHead{position:static; top:auto; padding:0; background:transparent; border:none; box-shadow:none; backdrop-filter:none}
+  .cuadreShell{grid-template-columns:1fr}
+  .cuadreResumeGrid{grid-template-columns:1fr 1fr}
+  .cuadreMiniGrid{grid-template-columns:1fr}
+  .cuadrePreviewWrap{position:static}
+  .cuadreDenomTable{
+    min-width:500px;
+  }
   .ajProductGrid{
     grid-template-columns:1fr;
   }
@@ -3062,14 +3315,7 @@ span.flatpickr-weekday{
   color:#A9B3D0;
   font-size:12px;
 }
-#view-categorias [id^="catEdit"],
-#view-subcategorias [id^="subCatEdit"],
-#view-proveedores [id^="provEdit"],
-#view-productos [id^="prdEdit"],
-#view-limites [id^="limEdit"],
-#view-reglas-subcategorias [id^="regEdit"]{
-  display:none !important;
-}
+/* Edit fields are grouped inside collapsible Edit sections; do not force-hide them. */
 
 /* En usuarios y bodegas solo ocultar IDs/metadata, no todo el formulario de edicion */
 #view-usuarios #usrEditId,
@@ -3267,20 +3513,16 @@ button.homeDashCard{
 #view-usuarios .userSectionBody::-webkit-scrollbar-thumb:hover,
 #view-bodegas .repCollapseBodyInner::-webkit-scrollbar-thumb:hover{ background: linear-gradient(180deg, rgba(125,211,252,.9), rgba(56,189,248,.85)); }
 
-/* Collapse icon fix: hide literal text and render chevron via CSS */
+/* Collapse icon fix: use real icon text from HTML span */
 .userSectionIcon,
 .repCollapseIcon{
-  font-size:0;
-}
-.userSectionIcon::before,
-.repCollapseIcon::before{
-  content:'?';
   font-size:14px;
   line-height:1;
 }
-
-
-
+.userSectionIcon::before,
+.repCollapseIcon::before{
+  content:none !important;
+}
 #confirmModal{
   z-index: 2147483645 !important;
 }
@@ -3288,3 +3530,217 @@ button.homeDashCard{
   z-index: 2147483644 !important;
 }
 
+
+/* UI Form System */
+.uiFormLayout{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  margin-bottom:12px;
+  padding:12px;
+  border:1px solid rgba(148,163,184,.24);
+  border-radius:14px;
+  background: linear-gradient(180deg, rgba(15,23,42,.56), rgba(2,6,23,.45));
+}
+.uiFormLayout .lbl{
+  margin:0 0 6px;
+}
+.uiFormLayout .grid2,
+.uiFormLayout .grid3,
+.uiFormLayout .grid4{
+  gap:12px;
+}
+.uiFormLayout .in,
+.uiFormLayout select.in,
+.uiField .in,
+.uiField select.in{
+  min-height:44px;
+  height:44px;
+}
+.uiFormLayout .ta,
+.uiField .ta,
+.uiFormLayout textarea,
+.uiField textarea{
+  min-height:44px;
+}
+.uiField{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  min-width:0;
+}
+.uiField .lbl{
+  margin:0;
+}
+#view-r-existencias #repExistResume,
+#view-r-transferencias #repKarResume,
+#view-r-pedidos #repPedResume,
+#view-r-auditoria-sensibles #repAudMeta,
+#view-r-auditoria-sensibles #repAlertResume{
+  margin-top:10px;
+}
+@media (max-width: 980px){
+  .uiFormLayout{
+    padding:10px;
+  }
+}
+
+.addSectionHint{
+  margin-bottom:8px;
+  color:#B9C8DF;
+  font-size:12px;
+}
+
+
+/* Import UX cards */
+.adminImportBoard{
+  grid-column:1 / -1;
+  display:grid;
+  grid-template-columns: minmax(300px, 1.15fr) minmax(260px, 1fr);
+  gap:12px;
+  align-items:stretch;
+}
+.adminImportCard{
+  border:1px solid rgba(125,211,252,.26);
+  border-radius:14px;
+  padding:12px;
+  background: linear-gradient(180deg, rgba(15,23,42,.62), rgba(2,6,23,.5));
+  box-shadow: inset 0 0 0 1px rgba(15,23,42,.2);
+}
+.adminImportCardTitle{
+  font-size:14px;
+  font-weight:800;
+  color:#E2E8F0;
+}
+.adminImportCardSub{
+  margin-top:4px;
+  font-size:12px;
+  color:#AFC2DA;
+  line-height:1.35;
+}
+.adminImportDropZone{
+  margin-top:10px;
+  border:1px dashed rgba(125,211,252,.38);
+  border-radius:12px;
+  padding:10px;
+  background: rgba(15,23,42,.46);
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.adminImportDropZone [id$="FileName"]{
+  min-height:22px;
+  color:#B9C8DF;
+  font-size:12px;
+}
+.adminImportConfigGrid{
+  margin-top:10px;
+  display:grid;
+  gap:10px;
+}
+.adminImportActionRow{
+  margin-top:10px;
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.adminImportActionRow .btn,
+.adminImportActionRow button{
+  flex:1 1 150px;
+}
+.adminImportCardActions{
+  grid-column:1;
+}
+.adminImportCardExample{
+  grid-column:2;
+}
+.adminImportExampleList{
+  margin:10px 0 0;
+  padding-left:18px;
+  color:#C8D6EA;
+  font-size:12px;
+  line-height:1.45;
+}
+.adminImportExampleList li{ margin:2px 0; }
+
+@media (max-width: 1080px){
+  .adminImportBoard{
+    grid-template-columns:1fr;
+  }
+  .adminImportCardActions,
+  .adminImportCardExample{
+    grid-column:auto;
+  }
+}
+
+
+/* Productos - Captura manual layout */
+#view-productos .prdCaptureSection .adminSectionBody{
+  align-items:end;
+}
+#view-productos .prdCaptureSection .searchWrap{
+  grid-column:1 / -1;
+  display:grid;
+  grid-template-columns:minmax(220px,1fr) auto;
+  gap:10px;
+  align-items:center;
+}
+#view-productos .prdCaptureSection .searchWrap .in{
+  margin:0;
+}
+#view-productos .prdCaptureSection .searchWrap #prdSearchBtn{
+  margin:0;
+  min-width:96px;
+}
+#view-productos .prdCaptureSection #prdVisibleWarehouses{
+  min-height:122px;
+}
+#view-productos .prdCaptureSection #prdRefresh,
+#view-productos .prdCaptureSection #prdSave{
+  justify-self:start;
+  margin-top:0;
+  min-width:170px;
+}
+#view-productos .prdCaptureSection #prdSave{
+  background: linear-gradient(135deg, #34D399, #60A5FA);
+  color:#041321;
+}
+@media (max-width: 980px){
+  #view-productos .prdCaptureSection .searchWrap{
+    grid-template-columns:1fr;
+  }
+  #view-productos .prdCaptureSection #prdSearchBtn,
+  #view-productos .prdCaptureSection #prdRefresh,
+  #view-productos .prdCaptureSection #prdSave{
+    width:100%;
+    min-width:0;
+  }
+}
+
+
+/* Admin list compact scrolling */
+#view-categorias .repCollapseSection .tableWrap,
+#view-subcategorias .repCollapseSection .tableWrap,
+#view-motivos-movimiento .repCollapseSection .tableWrap,
+#view-proveedores .repCollapseSection .tableWrap,
+#view-productos .repCollapseSection .tableWrap,
+#view-limites .repCollapseSection .tableWrap,
+#view-reglas-subcategorias .repCollapseSection .tableWrap,
+#view-bodegas [data-bod-collapse] .tableWrap,
+#view-usuarios .userSection .tableWrap{
+  max-height: min(360px, calc(100dvh - 290px));
+  overflow:auto;
+}
+@media (max-width: 980px){
+  #view-categorias .repCollapseSection .tableWrap,
+  #view-subcategorias .repCollapseSection .tableWrap,
+  #view-motivos-movimiento .repCollapseSection .tableWrap,
+  #view-proveedores .repCollapseSection .tableWrap,
+  #view-productos .repCollapseSection .tableWrap,
+  #view-limites .repCollapseSection .tableWrap,
+  #view-reglas-subcategorias .repCollapseSection .tableWrap,
+  #view-bodegas [data-bod-collapse] .tableWrap,
+  #view-usuarios .userSection .tableWrap{
+    max-height: min(300px, calc(100dvh - 250px));
+  }
+}

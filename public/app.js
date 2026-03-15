@@ -22,7 +22,8 @@ function normalizeAddViewsLayout(){
       const view=document.getElementById(viewId);
       const card=view?.querySelector('.card.light');
       if(!card) return;
-      card.querySelectorAll(editSelectors).forEach((el)=>el.classList.add('hidden'));
+      card.querySelectorAll(editSelectors).forEach((el)=>el.classList.remove('hidden'));
+
     });
   }catch{}
 }
@@ -91,6 +92,14 @@ function ensureTableWrapByBodyId(card, bodyId) {
   wrap.appendChild(table);
 }
 
+function enforceCompactTableByBodyId(card, bodyId) {
+  const body = card?.querySelector('#' + bodyId);
+  if (!body) return;
+  const wrap = body.closest('.tableWrap');
+  if (!wrap) return;
+  wrap.classList.add('repTableScroll', 'manageTableCompact');
+}
+
 function createAdminCollapseSection(title, bodyClass = '') {
   const sec = document.createElement('section');
   sec.className = 'repCollapseSection';
@@ -98,25 +107,51 @@ function createAdminCollapseSection(title, bodyClass = '') {
   sec.innerHTML =
     '<button class="repCollapseToggle" data-admin-collapse-toggle type="button" aria-expanded="true">'
       + '<div class="repCollapseMeta"><div class="cardTitle">' + title + '</div></div>'
-      + '<span class="repCollapseIcon" aria-hidden="true">?</span>'
+      + '<span class="repCollapseIcon" aria-hidden="true">&#9662;</span>'
     + '</button>'
     + '<div class="repCollapseBody"><div class="repCollapseBodyInner ' + bodyClass + '"></div></div>';
   return sec;
 }
 
+function resolveMovableNode(card, el) {
+  if (!card || !el) return null;
+  if (el.tagName === 'TBODY') return el.closest('.tableWrap') || el.closest('table') || el;
+
+  const inSection = el.closest('[data-admin-collapse], [data-bod-collapse], .userSection');
+  if (inSection) return null;
+
+  const uiField = el.closest('.uiField');
+  if (uiField && uiField.closest('.card.light') === card) return uiField;
+
+  const gridField = el.closest('.grid2 > div, .grid3 > div, .grid4 > div');
+  if (gridField && gridField.closest('.card.light') === card) return gridField;
+
+  const actionRow = el.closest('.addRow, .actionRow');
+  if (actionRow && actionRow.closest('.card.light') === card) {
+    // Move only the requested control when an action row mixes buttons for different sections.
+    if (el.id) return el;
+    return actionRow;
+  }
+
+  const fileWrap = el.id && /FileName$/i.test(el.id) ? el.parentElement : null;
+  if (fileWrap && fileWrap !== card && fileWrap.closest('.card.light') === card) return fileWrap;
+
+  return el;
+}
+
 function moveIntoSection(card, section, ids) {
   const body = section.querySelector('.repCollapseBodyInner');
+  if (!body) return;
   ids.forEach((id) => {
     const el = card.querySelector('#' + id);
     if (!el) return;
-    let node = el;
-    if (el.tagName === 'TBODY') {
-      node = el.closest('.tableWrap') || el.closest('table') || el;
-    }
-    if (el.id && /FileName$/i.test(el.id)) {
-      node.classList.add('note');
-    }
-    if (node && node.parentNode === card) body.appendChild(node);
+    const node = resolveMovableNode(card, el);
+    if (!node || !node.parentNode) return;
+    if (node === card || node.contains(body)) return;
+    if (node.parentNode === body) return;
+    if (node.closest('[data-admin-collapse], [data-bod-collapse], .userSection')) return;
+    if (el.id && /FileName$/i.test(el.id) && node.classList) node.classList.add('note');
+    body.appendChild(node);
   });
 }
 
@@ -125,21 +160,21 @@ function moveIdsIntoContainer(card, container, ids) {
   ids.forEach((id) => {
     const el = card.querySelector('#' + id);
     if (!el) return;
-    let node = el;
-    if (el.tagName === 'TBODY') {
-      node = el.closest('.tableWrap') || el.closest('table') || el;
-    }
-    if (node && node.parentNode === card) container.appendChild(node);
+    const node = resolveMovableNode(card, el);
+    if (!node || !node.parentNode) return;
+    if (node === card || node.contains(container)) return;
+    if (node.parentNode === container) return;
+    if (node.closest('[data-admin-collapse], [data-bod-collapse], .userSection')) return;
+    container.appendChild(node);
   });
 }
-
 function createUserSection(title, bodyClass = '') {
   const sec = document.createElement('section');
   sec.className = 'userSection';
   sec.innerHTML =
     '<button class="userSectionToggle" data-user-acc-toggle type="button" aria-expanded="true">'
       + '<div class="cardTitle">' + title + '</div>'
-      + '<span class="userSectionIcon" aria-hidden="true">?</span>'
+      + '<span class="userSectionIcon" aria-hidden="true">&#9662;</span>'
     + '</button>'
     + '<div class="userSectionBody"><div class="' + bodyClass + '"></div></div>';
   return sec;
@@ -152,10 +187,132 @@ function createBodegaSection(title, bodyClass = '') {
   sec.innerHTML =
     '<button class="repCollapseToggle" data-bod-collapse-toggle type="button" aria-expanded="true">'
       + '<div class="repCollapseMeta"><div class="panelTitle">' + title + '</div></div>'
-      + '<span class="repCollapseIcon" aria-hidden="true">?</span>'
+      + '<span class="repCollapseIcon" aria-hidden="true">&#9662;</span>'
     + '</button>'
     + '<div class="repCollapseBody"><div class="repCollapseBodyInner ' + bodyClass + '"></div></div>';
   return sec;
+}
+
+function openAdminCollapseSection(viewId, title) {
+  const view = document.getElementById(viewId);
+  if (!view) return;
+  const section = Array.from(view.querySelectorAll('[data-admin-collapse]')).find((sec) => {
+    const txt = sec.querySelector('.cardTitle, .panelTitle')?.textContent?.trim();
+    return txt === title;
+  });
+  syncAdminCollapseState(section, true);
+}
+
+
+const IMPORT_SECTION_EXAMPLES = {
+  'view-categorias:importar csv': ['nombre_categoria', 'activo (1=Activo, 0=Inactivo)'],
+  'view-subcategorias:importar csv': ['nombre_subcategoria', 'categoria', 'activo (1/0)'],
+  'view-proveedores:importar csv': ['nombre_proveedor', 'telefono', 'direccion', 'activo (1/0)'],
+  'view-limites:importar csv': ['bodega', 'producto o sku', 'minimo', 'maximo', 'activo (1/0)'],
+  'view-productos:importar productos': ['nombre_producto', 'sku', 'medida', 'categoria', 'subcategoria', 'activo (1/0)'],
+  'view-productos:importar stock': ['sku o producto', 'bodega', 'cantidad', 'lote', 'caducidad (YYYY-MM-DD)', 'costo_unitario']
+};
+
+function getImportExampleLines(viewId, title) {
+  const key = String(viewId || '') + ':' + String(title || '').trim().toLowerCase();
+  return IMPORT_SECTION_EXAMPLES[key] || ['Revisa la plantilla CSV para el orden exacto de columnas.'];
+}
+
+function resolveImportNode(card, body, selector) {
+  const el = body.querySelector(selector);
+  if (!el) return null;
+  const node = resolveMovableNode(card, el) || el;
+  if (!node || node.closest('.adminImportBoard')) return null;
+  return node;
+}
+
+function buildImportExampleCard(lines) {
+  const card = document.createElement('div');
+  card.className = 'adminImportCard adminImportCardExample';
+  card.innerHTML = '<div class="adminImportCardTitle">Ejemplo de columnas</div>';
+  const list = document.createElement('ul');
+  list.className = 'adminImportExampleList';
+  lines.forEach((line) => {
+    const li = document.createElement('li');
+    li.textContent = line;
+    list.appendChild(li);
+  });
+  card.appendChild(list);
+  return card;
+}
+
+function enhanceSingleImportSection(section) {
+  if (!section) return;
+  const body = section.querySelector('.repCollapseBodyInner');
+  if (!body || body.dataset.importEnhanced === '1') return;
+
+  const title = section.querySelector('.cardTitle, .panelTitle')?.textContent?.trim() || '';
+  if (!/^importar/i.test(title)) return;
+
+  const card = section.closest('.card.light');
+  if (!card) return;
+
+  const fileNode = resolveImportNode(card, body, 'input[type="file"]');
+  const fileNameNode = resolveImportNode(card, body, '[id$="FileName"]');
+  const delimiterNode = resolveImportNode(card, body, 'select[id$="Delimiter"], select[id*="Delimiter"]');
+  const motivoNode = resolveImportNode(card, body, '#prdStockImportMotivo');
+  const obsNode = resolveImportNode(card, body, '#prdStockImportObs');
+  const templateBtn = resolveImportNode(card, body, 'button[id*="Template"]');
+  const importBtn = resolveImportNode(card, body, 'button[id*="ImportBtn"]');
+  const refreshBtn = resolveImportNode(card, body, 'button[id$="Refresh"]');
+
+  const board = document.createElement('div');
+  board.className = 'adminImportBoard';
+
+  const uploadCard = document.createElement('div');
+  uploadCard.className = 'adminImportCard adminImportCardUpload';
+  uploadCard.innerHTML = '<div class="adminImportCardTitle">1. Subir archivo</div><div class="adminImportCardSub">Selecciona el CSV y valida que el nombre de columnas coincida con la plantilla.</div>';
+  const drop = document.createElement('div');
+  drop.className = 'adminImportDropZone';
+  if (fileNode) drop.appendChild(fileNode);
+  if (fileNameNode) drop.appendChild(fileNameNode);
+  uploadCard.appendChild(drop);
+
+  const configCard = document.createElement('div');
+  configCard.className = 'adminImportCard adminImportCardConfig';
+  configCard.innerHTML = '<div class="adminImportCardTitle">2. Configuracion</div><div class="adminImportCardSub">Define separador y campos de control antes de importar.</div>';
+  const configBody = document.createElement('div');
+  configBody.className = 'adminImportConfigGrid';
+  if (delimiterNode) configBody.appendChild(delimiterNode);
+  if (motivoNode) configBody.appendChild(motivoNode);
+  if (obsNode) configBody.appendChild(obsNode);
+  configCard.appendChild(configBody);
+
+  const actionCard = document.createElement('div');
+  actionCard.className = 'adminImportCard adminImportCardActions';
+  actionCard.innerHTML = '<div class="adminImportCardTitle">3. Ejecutar</div><div class="adminImportCardSub">Descarga plantilla, carga datos y ejecuta importacion.</div>';
+  const actions = document.createElement('div');
+  actions.className = 'adminImportActionRow';
+  if (templateBtn) actions.appendChild(templateBtn);
+  if (importBtn) actions.appendChild(importBtn);
+  if (refreshBtn) actions.appendChild(refreshBtn);
+  actionCard.appendChild(actions);
+
+  const viewId = section.closest('.view')?.id || '';
+  const exampleCard = buildImportExampleCard(getImportExampleLines(viewId, title));
+
+  board.appendChild(uploadCard);
+  board.appendChild(configCard);
+  board.appendChild(actionCard);
+  board.appendChild(exampleCard);
+
+  body.appendChild(board);
+  body.dataset.importEnhanced = '1';
+}
+
+function enhanceAdminImportSections() {
+  document.querySelectorAll('[data-admin-collapse]').forEach((section) => {
+    try {
+      enhanceSingleImportSection(section);
+    } catch (err) {
+      console.error('Error mejorando seccion de importacion', err);
+    }
+  });
 }
 
 function rebuildAddViewSections() {
@@ -163,61 +320,135 @@ function rebuildAddViewSections() {
     {
       view:'view-categorias',
       sections:[
-        {title:'Crear categoria', ids:['catNombre','catActivo','catImportFile','catImportFileName','catImportDelimiter','catTemplateBtn','catImportBtn','catRefresh','catSave']},
-        {title:'Listado categorias', ids:['catManageList']}
+        {title:'Captura manual', desc:'Registra categorias una a una.', ids:['catNombre','catActivo','catSave','catRefresh']},
+        {title:'Importar CSV', desc:'Sube archivo CSV usando plantilla y separador.', ids:['catImportFile','catImportFileName','catImportDelimiter','catTemplateBtn','catImportBtn']},
+        {title:'Editar categoria', desc:'Completa los datos cargados desde el listado para actualizar.', ids:['catEditId','catEditNombre','catEditActivo','catEditSave']},
+        {title:'Listado categorias', desc:'Consulta y administra categorias existentes.', ids:['catManageList']}
       ]
     },
     {
       view:'view-subcategorias',
       sections:[
-        {title:'Crear subcategoria', ids:['subCatNombre','subCatCategoria','subCatActivo','subCatImportFile','subCatImportFileName','subCatImportDelimiter','subCatTemplateBtn','subCatImportBtn','subCatRefresh','subCatSave']},
-        {title:'Listado subcategorias', ids:['subCatManageList']}
+        {title:'Captura manual', desc:'Crea subcategorias una por una.', ids:['subCatNombre','subCatCategoria','subCatActivo','subCatRefresh','subCatSave']},
+        {title:'Importar CSV', desc:'Carga subcategorias masivamente desde plantilla.', ids:['subCatImportFile','subCatImportFileName','subCatImportDelimiter','subCatTemplateBtn','subCatImportBtn']},
+        {title:'Editar subcategoria', desc:'Edita la subcategoria seleccionada desde el listado.', ids:['subCatEditId','subCatEditCategoria','subCatEditNombre','subCatEditActivo','subCatEditSave']},
+        {title:'Listado subcategorias', desc:'Consulta y administra subcategorias.', ids:['subCatManageList']}
       ]
     },
     {
       view:'view-motivos-movimiento',
       sections:[
-        {title:'Crear motivo', ids:['motNombre','motTipo','motSigno','motActivo','motRefresh','motSave']},
-        {title:'Listado motivos', ids:['motList']}
+        {title:'Captura manual', desc:'Define motivos para entradas, salidas y ajustes.', ids:['motNombre','motTipo','motSigno','motActivo','motRefresh','motSave']},
+        {title:'Listado motivos', desc:'Revisa los motivos existentes.', ids:['motList']}
       ]
     },
     {
       view:'view-proveedores',
       sections:[
-        {title:'Crear proveedor', ids:['provNombre','provTelefono','provDireccion','provActivo','provImportFile','provImportFileName','provImportDelimiter','provTemplateBtn','provImportBtn','provRefresh','provSave']},
-        {title:'Listado proveedores', ids:['provManageList']}
+        {title:'Captura manual', desc:'Registra proveedores uno por uno.', ids:['provNombre','provTelefono','provDireccion','provActivo','provRefresh','provSave']},
+        {title:'Importar CSV', desc:'Carga proveedores desde archivo CSV.', ids:['provImportFile','provImportFileName','provImportDelimiter','provTemplateBtn','provImportBtn']},
+        {title:'Editar proveedor', desc:'Actualiza proveedor seleccionado del listado.', ids:['provEditId','provEditNombre','provEditTelefono','provEditDireccion','provEditActivo','provEditSave']},
+        {title:'Listado proveedores', desc:'Consulta y administra proveedores.', ids:['provManageList']}
       ]
     },
     {
       view:'view-limites',
       sections:[
-        {title:'Configurar min/max', ids:['limWarehouse','limProduct','limMin','limMax','limActive','limImportFile','limImportFileName','limImportDelimiter','limTemplateBtn','limImportBtn','limRefresh','limSave']},
-        {title:'Listado limites', ids:['limList']}
+        {title:'Captura manual', desc:'Configura limites minimo y maximo por bodega/producto.', ids:['limWarehouse','limProduct','limMin','limMax','limActive','limRefresh','limSave']},
+        {title:'Importar CSV', desc:'Carga limites masivos con separador y plantilla.', ids:['limImportFile','limImportFileName','limImportDelimiter','limTemplateBtn','limImportBtn']},
+        {title:'Editar limite', desc:'Edita un limite seleccionado desde el listado.', ids:['limEditWarehouse','limEditProduct','limEditWarehouseName','limEditProductName','limEditMin','limEditMax','limEditActive','limEditSave']},
+        {title:'Listado limites', desc:'Consulta y administra limites.', ids:['limList']}
       ]
     },
     {
       view:'view-reglas-subcategorias',
       sections:[
-        {title:'Configurar regla', ids:['regSubcat','regMaxDays','regAlertDays','regActive','regRefresh','regSave']},
-        {title:'Listado reglas', ids:['regList']}
+        {title:'Captura manual', desc:'Define reglas por subcategoria.', ids:['regSubcat','regMaxDays','regAlertDays','regActive','regRefresh','regSave']},
+        {title:'Editar regla', desc:'Ajusta la regla seleccionada desde el listado.', ids:['regEditSubcatId','regEditSubcatName','regEditMaxDays','regEditAlertDays','regEditActive','regEditSave']},
+        {title:'Listado reglas', desc:'Consulta estado y vigencia de reglas.', ids:['regList']}
       ]
     }
   ];
 
   viewMap.forEach((cfg) => {
-    const view = document.getElementById(cfg.view);
-    const card = view?.querySelector('.card.light');
-    if (!card || card.dataset.sectioned === '1') return;
-    card.dataset.sectioned = '1';
+    try {
+      const view = document.getElementById(cfg.view);
+      const card = view?.querySelector('.card.light');
+      if (!card || card.dataset.sectioned === '1') return;
+      card.dataset.sectioned = '1';
 
-    cfg.sections.forEach((secCfg, idx) => {
-      const sec = createAdminCollapseSection(secCfg.title, 'adminSectionBody');
-      if (idx > 0) sec.classList.add('is-collapsed');
-      card.appendChild(sec);
-      moveIntoSection(card, sec, secCfg.ids);
-    });
+      cfg.sections.forEach((secCfg, idx) => {
+        try {
+          const sec = createAdminCollapseSection(secCfg.title, 'adminSectionBody');
+          if (idx > 0) sec.classList.add('is-collapsed');
+          card.appendChild(sec);
+          const body = sec.querySelector('.repCollapseBodyInner');
+          if (secCfg.desc && body) {
+            const hint = document.createElement('div');
+            hint.className = 'note addSectionHint';
+            hint.textContent = secCfg.desc;
+            body.appendChild(hint);
+          }
+          moveIntoSection(card, sec, secCfg.ids);
+        } catch (err) {
+          console.error('Error creando seccion', cfg.view, secCfg?.title, err);
+        }
+      });
+    } catch (err) {
+      console.error('Error procesando vista', cfg.view, err);
+    }
   });
 
+  const prdView = document.getElementById('view-productos');
+  const prdCardSection = prdView?.querySelector('.card.light');
+  if (prdCardSection && prdCardSection.dataset.prdSectioned !== '1') {
+    prdCardSection.dataset.prdSectioned = '1';
+    const prdSections = [
+      {
+        title: 'Captura manual',
+        desc: 'Registra y actualiza productos de forma individual.',
+        ids: [
+          'prdNombre','prdSku','prdMedida','prdActivo','prdCategoria','prdSubcategoria',
+          'prdVisibleWarehouses','prdSearch','prdSearchBtn','prdRefresh','prdSave'
+        ]
+      },
+      {
+        title: 'Importar productos',
+        desc: 'Carga masiva de catalogo de productos por CSV.',
+        ids: ['prdImportFile','prdImportFileName','prdImportDelimiter','prdTemplateBtn','prdImportBtn']
+      },
+      {
+        title: 'Importar stock',
+        desc: 'Actualiza existencias por CSV con motivo y observacion.',
+        ids: ['prdStockImportFile','prdStockImportFileName','prdStockImportDelimiter','prdStockImportMotivo','prdStockImportObs','prdStockTemplateBtn','prdStockImportBtn']
+      },
+      {
+        title: 'Listado productos',
+        desc: 'Consulta, filtra y edita productos existentes.',
+        ids: ['prdManageList']
+      },
+      {
+        title: 'Editar producto',
+        desc: 'Actualiza el producto seleccionado desde el listado.',
+        ids: ['prdEditId','prdEditNombre','prdEditSku','prdEditMedida','prdEditActivo','prdEditCategoria','prdEditSubcategoria','prdEditVisibleWarehouses','prdEditSave']
+      }
+    ];
+
+    prdSections.forEach((cfg, idx) => {
+      const sec = createAdminCollapseSection(cfg.title, 'adminSectionBody');
+      if (cfg.title === 'Captura manual') sec.classList.add('prdCaptureSection');
+      if (idx > 0) sec.classList.add('is-collapsed');
+      prdCardSection.appendChild(sec);
+      const body = sec.querySelector('.repCollapseBodyInner');
+      if (cfg.desc && body) {
+        const hint = document.createElement('div');
+        hint.className = 'note addSectionHint';
+        hint.textContent = cfg.desc;
+        body.appendChild(hint);
+      }
+      moveIntoSection(prdCardSection, sec, cfg.ids);
+    });
+  }
   const usrView = document.getElementById('view-usuarios');
   const usrCard = usrView?.querySelector('.card.light');
   if (usrCard && usrCard.dataset.userSectioned !== '1') {
@@ -296,21 +527,39 @@ function rebuildAddViewSections() {
     });
   }
 
-  // productos y bodegas: asegurar tablas con scroll aunque la estructura varie
-  const prdCard = document.querySelector('#view-productos .card.light');
-  if (prdCard) ensureTableWrapByBodyId(prdCard, 'prdManageList');
-  const bodCardRef = document.querySelector('#view-bodegas .card.light');
-  if (bodCardRef) ensureTableWrapByBodyId(bodCardRef, 'bodManageList');
-  const usrCardRef = document.querySelector('#view-usuarios .card.light');
-  if (usrCardRef) {
-    ensureTableWrapByBodyId(usrCardRef, 'usrManageList');
-    ensureTableWrapByBodyId(usrCardRef, 'usrPermList');
-    ensureTableWrapByBodyId(usrCardRef, 'usrWhAccessList');
-  }
+  // Listas administrativas: alto compacto + scroll interno
+  const tableMaps = [
+    { card: document.querySelector('#view-categorias .card.light'), ids: ['catManageList'] },
+    { card: document.querySelector('#view-subcategorias .card.light'), ids: ['subCatManageList'] },
+    { card: document.querySelector('#view-motivos-movimiento .card.light'), ids: ['motList'] },
+    { card: document.querySelector('#view-proveedores .card.light'), ids: ['provManageList'] },
+    { card: document.querySelector('#view-productos .card.light'), ids: ['prdManageList'] },
+    { card: document.querySelector('#view-limites .card.light'), ids: ['limList'] },
+    { card: document.querySelector('#view-reglas-subcategorias .card.light'), ids: ['regList'] },
+    { card: document.querySelector('#view-bodegas .card.light'), ids: ['bodManageList'] },
+    { card: document.querySelector('#view-usuarios .card.light'), ids: ['usrManageList', 'usrPermList', 'usrWhAccessList'] }
+  ];
+  tableMaps.forEach(({ card, ids }) => {
+    if (!card) return;
+    ids.forEach((id) => {
+      ensureTableWrapByBodyId(card, id);
+      enforceCompactTableByBodyId(card, id);
+    });
+  });
 
   initAdminAddCollapsibles();
   initUserAccordions();
   initBodegasCollapsibles();
+  ensureDynamicFieldLabels();
+  enhanceAdminImportSections();
+}
+
+function safeRebuildAddViewSections() {
+  try {
+    rebuildAddViewSections();
+  } catch (e) {
+    console.error('Error en rebuildAddViewSections:', e);
+  }
 }
 
 function ensureNativeUiClasses(){
@@ -412,54 +661,399 @@ function applyAddFieldHints(){
   }catch{}
 }
 
-const IS_DEV_8000 = location.port === "8000";
-const NODE_ORIGIN = `${location.protocol}//${location.hostname}:3001`;
-const API_ORIGIN = location.port === "3001"
-  ? location.origin
-  : IS_DEV_8000
-  ? NODE_ORIGIN
-  : `${location.origin}/inventarioPrincipal`;
-const SOCKET_ORIGIN = IS_DEV_8000 ? NODE_ORIGIN : location.origin;
-const SOCKET_PATH = location.port === "3001" || IS_DEV_8000
-  ? "/socket.io"
-  : "/inventarioprincipal/socket.io";
+function ensureStaticSelectCatalogs() {
+  try {
+    const staticSelects = {
+      catActivo: [
+        { value: "1", label: "Activo" },
+        { value: "0", label: "Inactivo" }
+      ],
+      subCatActivo: [
+        { value: "1", label: "Activo" },
+        { value: "0", label: "Inactivo" }
+      ],
+      motTipo: [
+        { value: "ENTRADA", label: "Entrada" },
+        { value: "SALIDA", label: "Salida" },
+        { value: "AJUSTE", label: "Ajuste" }
+      ],
+      motSigno: [
+        { value: "1", label: "Suma (+)" },
+        { value: "-1", label: "Resta (-)" }
+      ],
+      motActivo: [
+        { value: "1", label: "Activo" },
+        { value: "0", label: "Inactivo" }
+      ],
+      provActivo: [
+        { value: "1", label: "Activo" },
+        { value: "0", label: "Inactivo" }
+      ],
+      prdActivo: [
+        { value: "1", label: "Activo" },
+        { value: "0", label: "Inactivo" }
+      ],
+      limActive: [
+        { value: "1", label: "Activo" },
+        { value: "0", label: "Inactivo" }
+      ],
+      regActive: [
+        { value: "1", label: "Activo" },
+        { value: "0", label: "Inactivo" }
+      ],
+      usrActive: [
+        { value: "1", label: "Activo" },
+        { value: "0", label: "Inactivo" }
+      ],
+      usrCanSupervisor: [
+        { value: "1", label: "Si" },
+        { value: "0", label: "No" }
+      ],
+      usrNoAutoLogout: [
+        { value: "0", label: "No" },
+        { value: "1", label: "Si" }
+      ],
+      bodTipo: [
+        { value: "DESPACHO", label: "Despacho / Principal" },
+        { value: "RECEPTORA", label: "Receptora" }
+      ],
+      bodActivo: [
+        { value: "1", label: "Activa" },
+        { value: "0", label: "Inactiva" }
+      ],
+      bodStock: [
+        { value: "1", label: "Si" },
+        { value: "0", label: "No" }
+      ],
+      bodRecibir: [
+        { value: "1", label: "Si" },
+        { value: "0", label: "No" }
+      ],
+      bodDespachar: [
+        { value: "1", label: "Si" },
+        { value: "0", label: "No" }
+      ],
+      bodModo: [
+        { value: "SALIDA", label: "Salida" },
+        { value: "TRANSFERENCIA", label: "Transferencia" }
+      ],
+      bodConteoFinal: [
+        { value: "1", label: "Si" },
+        { value: "0", label: "No" }
+      ],
+      bodEditTipo: [
+        { value: "DESPACHO", label: "Despacho / Principal" },
+        { value: "RECEPTORA", label: "Receptora" }
+      ],
+      bodEditActivo: [
+        { value: "1", label: "Activa" },
+        { value: "0", label: "Inactiva" }
+      ],
+      bodEditStock: [
+        { value: "1", label: "Si" },
+        { value: "0", label: "No" }
+      ],
+      bodEditRecibir: [
+        { value: "1", label: "Si" },
+        { value: "0", label: "No" }
+      ],
+      bodEditDespachar: [
+        { value: "1", label: "Si" },
+        { value: "0", label: "No" }
+      ],
+      bodEditModo: [
+        { value: "SALIDA", label: "Salida" },
+        { value: "TRANSFERENCIA", label: "Transferencia" }
+      ],
+      bodEditConteoFinal: [
+        { value: "1", label: "Si" },
+        { value: "0", label: "No" }
+      ],
+      repPedDateMode: [
+        { value: "PEDIDO", label: "Fecha pedido" },
+        { value: "DESPACHO", label: "Fecha despacho" }
+      ],
+      repKarTipo: [
+        { value: "", label: "Todos los tipos" },
+        { value: "ENTRADA", label: "Entrada" },
+        { value: "SALIDA", label: "Salida" },
+        { value: "TRANSFERENCIA", label: "Transferencia" }
+      ]
+    };
 
-if (IS_DEV_8000) {
-  const rewriteApiUrl = (rawUrl) => {
-    const url = String(rawUrl || "");
-    if (!url) return url;
-    if (url.startsWith("/api/")) return `${NODE_ORIGIN}${url}`;
-    if (url.startsWith("api/")) return `${NODE_ORIGIN}/${url}`;
-    const absPrefix = `${location.origin}/api/`;
-    if (url.startsWith(absPrefix)) {
-      const rel = url.slice(location.origin.length);
-      return `${NODE_ORIGIN}${rel}`;
-    }
+    Object.entries(staticSelects).forEach(([id, options]) => {
+      const sel = document.getElementById(id);
+      if (!sel || sel.tagName !== 'SELECT') return;
+
+      const desiredValues = new Set(options.map((x) => String(x.value)));
+      const existing = Array.from(sel.options || []);
+      const hasDesired = existing.some((o) => desiredValues.has(String(o.value)));
+      if (hasDesired) return;
+
+      const first = existing[0];
+      const keepPlaceholder = first && String(first.value || '') === '';
+      const prevValue = String(sel.value || '');
+      const html = [];
+      if (keepPlaceholder) {
+        html.push(`<option value="">${first.textContent || 'Seleccione'}</option>`);
+      }
+      options.forEach((opt) => {
+        html.push(`<option value="${String(opt.value)}">${opt.label}</option>`);
+      });
+      sel.innerHTML = html.join('');
+
+      if (prevValue && desiredValues.has(prevValue)) {
+        sel.value = prevValue;
+      } else if (!keepPlaceholder && options.length) {
+        sel.value = String(options[0].value);
+      }
+    });
+  } catch {}
+}
+const UI_FIELD_LABELS = {
+  catNombre: 'Nombre categoria',
+  catActivo: 'Estado',
+  catImportFile: 'Archivo CSV',
+  catImportDelimiter: 'Separador CSV',
+  subCatNombre: 'Nombre subcategoria',
+  subCatCategoria: 'Categoria',
+  subCatActivo: 'Estado',
+  subCatImportFile: 'Archivo CSV',
+  subCatImportDelimiter: 'Separador CSV',
+  motNombre: 'Nombre motivo',
+  motTipo: 'Tipo',
+  motSigno: 'Signo',
+  motActivo: 'Estado',
+  provNombre: 'Nombre proveedor',
+  provTelefono: 'Telefono',
+  provDireccion: 'Direccion',
+  provActivo: 'Estado',
+  provImportFile: 'Archivo CSV',
+  provImportDelimiter: 'Separador CSV',
+  prdNombre: 'Nombre producto',
+  prdSku: 'SKU',
+  prdMedida: 'Medida',
+  prdCategoria: 'Categoria',
+  prdSubcategoria: 'Subcategoria',
+  prdActivo: 'Estado',
+  prdImportFile: 'Archivo productos',
+  prdImportDelimiter: 'Separador importacion',
+  prdStockImportFile: 'Archivo stock',
+  prdStockImportDelimiter: 'Separador stock',
+  prdStockImportMotivo: 'Motivo stock',
+  prdStockImportObs: 'Observacion',
+  limWarehouse: 'Bodega',
+  limProduct: 'Producto',
+  limMin: 'Minimo',
+  limMax: 'Maximo',
+  limActive: 'Estado',
+  limImportFile: 'Archivo CSV',
+  limImportDelimiter: 'Separador CSV',
+  regSubcat: 'Subcategoria',
+  regMaxDays: 'Dias maximos',
+  regAlertDays: 'Dias alerta',
+  regActive: 'Estado',
+  usrUsername: 'Usuario',
+  usrFullName: 'Nombre completo',
+  usrRole: 'Rol',
+  usrWarehouse: 'Bodega',
+  usrPassword: 'Password',
+  usrOrderPin: 'PIN pedidos',
+  usrActive: 'Estado',
+  usrCanSupervisor: 'Puede supervisar',
+  usrNoAutoLogout: 'Sin auto logout',
+  usrAvatarFile: 'Avatar',
+  usrResetUser: 'Usuario',
+  usrResetPassword: 'Nuevo password',
+  usrResetPassword2: 'Confirmar password',
+  usrResetOrderPin: 'Nuevo PIN',
+  usrResetOrderPin2: 'Confirmar PIN',
+  usrPermUser: 'Usuario',
+  usrWhAccessUser: 'Usuario',
+  usrEditUsername: 'Usuario',
+  usrEditFullName: 'Nombre completo',
+  usrEditRole: 'Rol',
+  usrEditWarehouse: 'Bodega',
+  usrEditActive: 'Estado',
+  usrEditCanSupervisor: 'Puede supervisar',
+  usrEditNoAutoLogout: 'Sin auto logout',
+  usrEditAvatarFile: 'Avatar',
+  bodNombre: 'Nombre bodega',
+  bodTipo: 'Tipo',
+  bodTelefono: 'Telefono',
+  bodDireccion: 'Direccion',
+  bodActivo: 'Estado',
+  bodStock: 'Maneja stock',
+  bodRecibir: 'Puede recibir',
+  bodDespachar: 'Puede despachar',
+  bodModo: 'Modo despacho',
+  bodDestino: 'Destino default',
+  bodConteoFinal: 'Permite conteo final',
+  bodLogoAppFile: 'Logo app',
+  bodLogoPrintFile: 'Logo impresion',
+  bodEditNombre: 'Nombre bodega',
+  bodEditTipo: 'Tipo',
+  bodEditTelefono: 'Telefono',
+  bodEditDireccion: 'Direccion',
+  bodEditActivo: 'Estado',
+  bodEditStock: 'Maneja stock',
+  bodEditRecibir: 'Puede recibir',
+  bodEditDespachar: 'Puede despachar',
+  bodEditModo: 'Modo despacho',
+  bodEditDestino: 'Destino default',
+  bodEditConteoFinal: 'Permite conteo final',
+  repPedId: 'Pedido',
+  repPedEstado: 'Estado',
+  repPedDateFrom: 'Desde',
+  repPedDateTo: 'Hasta',
+  repPedDateMode: 'Tipo de fecha',
+  repPedWarehouseReq: 'Bodega solicitante',
+  repPedWarehouseDesp: 'Bodega despacho',
+  repPedRequesterUser: 'Solicitante',
+  repPedDispatchUser: 'Usuario despacho',
+  repPedCategoria: 'Categoria',
+  repPedSubcategoria: 'Subcategoria',
+  repPedLote: 'Lote',
+  repPedPickProduct: 'Producto',
+  repKarWarehouse: 'Bodega',
+  repKarDateFrom: 'Desde',
+  repKarDateTo: 'Hasta',
+  repKarTipo: 'Tipo',
+  repKarMovimiento: 'Movimiento',
+  repKarCategoria: 'Categoria',
+  repKarSubcategoria: 'Subcategoria',
+  repKarUsuario: 'Usuario',
+  repKarSolicitante: 'Solicitante',
+  repKarDocumento: 'Documento',
+  repKarLote: 'Lote',
+  repKarPickProduct: 'Producto',
+  repExistWarehouse: 'Bodega',
+  repExistCategoria: 'Categoria',
+  repExistSubcategoria: 'Subcategoria',
+  repExistPickProduct: 'Producto',
+  repAudDateFrom: 'Desde',
+  repAudDateTo: 'Hasta',
+  repAudAction: 'Accion',
+  repAudQuery: 'Busqueda'
+};
+
+function buildUiFieldLabel(id = '') {
+  const text = String(id || '').replace(/^[^A-Za-z]+/, '').replace(/([a-z])([A-Z])/g, '$1 $2');
+  return text
+    .replace(/_/g, ' ')
+    .replace(/\b(id|usr|bod|rep|cat|prd|lim|reg|mot|prov)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function ensureUiFieldLabel(el) {
+  if (!el || !el.id) return;
+  const tag = String(el.tagName || '').toLowerCase();
+  const type = String(el.getAttribute('type') || '').toLowerCase();
+  if (!['input', 'select', 'textarea'].includes(tag)) return;
+  if (type === 'hidden' || type === 'checkbox' || type === 'radio') return;
+  if (el.classList?.contains('hidden') || el.closest('.hidden')) return;
+  if (/Edit/i.test(el.id) || /(Data)$/i.test(el.id) || el.id === 'regEditSubcatId') return;
+  if (/(Data)$/i.test(el.id) || el.id === 'usrEditId' || el.id === 'bodEditId' || el.id === 'regEditSubcatId') return;
+  if (el.closest('table') || el.closest('.tableWrap') || el.closest('.searchWrap')) return;
+  if (el.closest('.uiField')) return;
+  const prev = el.previousElementSibling;
+  if (prev && prev.classList && prev.classList.contains('lbl')) return;
+
+  const parent = el.parentElement;
+  if (!parent || parent.tagName === 'LABEL') return;
+
+  const labelText = UI_FIELD_LABELS[el.id] || buildUiFieldLabel(el.id) || 'Campo';
+  const field = document.createElement('div');
+  field.className = 'uiField';
+  parent.insertBefore(field, el);
+
+  const lbl = document.createElement('label');
+  lbl.className = 'lbl';
+  lbl.setAttribute('for', el.id);
+  lbl.textContent = labelText;
+
+  field.appendChild(lbl);
+  field.appendChild(el);
+}
+
+function ensureDynamicFieldLabels() {
+  const scopes = [
+    '#view-categorias .card.light',
+    '#view-subcategorias .card.light',
+    '#view-motivos-movimiento .card.light',
+    '#view-proveedores .card.light',
+    '#view-productos .card.light',
+    '#view-limites .card.light',
+    '#view-reglas-subcategorias .card.light',
+    '#view-usuarios .card.light',
+    '#view-bodegas .card.light',
+    '#view-r-pedidos .card.light',
+    '#view-r-transferencias .card.light',
+    '#view-r-existencias .card.light',
+    '#view-r-auditoria-sensibles .card.light'
+  ];
+  scopes.forEach((sel) => {
+    const root = document.querySelector(sel);
+    if (!root) return;
+    root.querySelectorAll('input[id],select[id],textarea[id]').forEach(ensureUiFieldLabel);
+  });
+}
+const APP_BASE_PATH = (() => {
+  const parts = String(location.pathname || "")
+    .split("/")
+    .filter(Boolean);
+  const publicIndex = parts.findIndex((part) => part.toLowerCase() === "public");
+  if (publicIndex > 0) {
+    return `/${parts.slice(0, publicIndex).join("/")}`;
+  }
+  if (parts[0] && parts[0].toLowerCase() === "inventarioprincipal") {
+    return `/${parts[0]}`;
+  }
+  return "";
+})();
+const API_ORIGIN = `${location.origin}${APP_BASE_PATH}`;
+const SOCKET_ORIGIN = location.origin;
+const SOCKET_PATH = `${APP_BASE_PATH}/socket.io`;
+
+const RUNTIME_ORIGIN = API_ORIGIN;
+const rewriteApiUrl = (rawUrl) => {
+  const url = String(rawUrl || "");
+  if (!url) return url;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(url) && !url.startsWith(location.origin)) {
     return url;
+  }
+  if (url.startsWith("/api/")) return `${RUNTIME_ORIGIN}${url}`;
+  if (url.startsWith("api/")) return `${RUNTIME_ORIGIN}/${url}`;
+  const absPrefix = `${location.origin}/api/`;
+  if (url.startsWith(absPrefix)) {
+    const rel = url.slice(location.origin.length);
+    return `${RUNTIME_ORIGIN}${rel}`;
+  }
+  return url;
+};
+
+if (typeof window.fetch === "function") {
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    if (typeof input === "string") {
+      return nativeFetch(rewriteApiUrl(input), init);
+    }
+    if (typeof Request !== "undefined" && input instanceof Request) {
+      const nextUrl = rewriteApiUrl(input.url || "");
+      if (nextUrl !== input.url) {
+        return nativeFetch(new Request(nextUrl, input), init);
+      }
+    }
+    return nativeFetch(input, init);
   };
+}
 
-  if (typeof window.fetch === "function") {
-    const nativeFetch = window.fetch.bind(window);
-    window.fetch = (input, init) => {
-      if (typeof input === "string") {
-        return nativeFetch(rewriteApiUrl(input), init);
-      }
-      if (typeof Request !== "undefined" && input instanceof Request) {
-        const nextUrl = rewriteApiUrl(input.url || "");
-        if (nextUrl !== input.url) {
-          return nativeFetch(new Request(nextUrl, input), init);
-        }
-      }
-      return nativeFetch(input, init);
-    };
-  }
-
-  if (typeof XMLHttpRequest !== "undefined") {
-    const nativeOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-      return nativeOpen.call(this, method, rewriteApiUrl(url), ...rest);
-    };
-  }
+if (typeof XMLHttpRequest !== "undefined") {
+  const nativeOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+    return nativeOpen.call(this, method, rewriteApiUrl(url), ...rest);
+  };
 }
 const DEFAULT_INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
 
@@ -881,7 +1475,8 @@ ensureNativeUiClasses();
 normalizeAddViewsLayout();
 applyAddViewButtonLabels();
 applyAddFieldHints();
-rebuildAddViewSections();
+ensureStaticSelectCatalogs();
+safeRebuildAddViewSections();
 initMobileAdaptiveNav();
 initModalScrollLock();
 initMenuAccordions();
@@ -961,6 +1556,7 @@ const titles = {
   "r-transferencias": "Reporte Kardex",
   "r-existencias": "Reporte de Existencias",
   "r-corte-diario": "Reporte Corte Diario",
+  "r-cuadres-caja": "Reporte Cuadres de Caja",
   "r-auditoria-sensibles": "Auditoria de Acciones Sensibles",
 };
 
@@ -993,6 +1589,7 @@ const sectionPermMap = {
   bodegas: "section.view.bodegas",
   "r-existencias": "section.view.r-existencias",
   "r-corte-diario": "section.view.r-corte-diario",
+  "r-cuadres-caja": "section.view.cuadre-caja",
   "r-entradas": "section.view.r-entradas",
   "r-salidas": "section.view.r-salidas",
   "r-pedidos": "section.view.r-pedidos",
@@ -1112,6 +1709,7 @@ function applyActionPermissions() {
   const filterSelectors = [
     "#repExistSearch", "#repEntSearch", "#repSalSearch", "#repPedSearch", "#repKarSearch",
     "#repDiaSearch", "#repDiaClear", "#repDiaQuery", "#repDiaShowAll", "#repDiaWarehouse", "#repDiaPdf",
+    "#repCuadreSearch", "#repCuadreClear", "#repCuadreFecha", "#repCuadreWarehouse", "#repCuadreResponsable",
     "#cuadreSearch", "#cuadreClear", "#cuadreFecha", "#cuadreWarehouse", "#cuadrePrintPos", "#cuadrePrintCarta",
     "#repCloseWarehouse", "#repCloseSearchDate", "#repCloseSearchBtn", "#repCloseAllBtn",
     "#repExistQuery", "#repEntQuery", "#repSalQuery", "#repPedQuery", "#repKarQuery",
@@ -1486,6 +2084,9 @@ document.querySelectorAll(".menuBtn[data-section]").forEach((b) => {
       loadReporteCorteWarehouseFilter();
       loadReporteCorteDiario();
     }
+    if (currentSection === "r-cuadres-caja") {
+      loadReporteCuadreWarehouseFilter().then(() => loadReporteCuadresCaja());
+    }
     if (currentSection === "r-entradas") {
       repEntCatalogosLoaded = false;
       loadReporteEntradasCatalogos().then(() => loadReporteEntradas());
@@ -1506,30 +2107,31 @@ document.querySelectorAll(".menuBtn[data-section]").forEach((b) => {
       loadReporteAuditoriaSensibles();
     }
     if (currentSection === "bodegas") {
-      rebuildAddViewSections();
+      safeRebuildAddViewSections();
       initBodegasCollapsibles();
+      ensureStaticSelectCatalogs();
       loadBodegasManage();
     }
     if (currentSection === "categorias") {
-      rebuildAddViewSections();
+      safeRebuildAddViewSections();
       loadCategoriasManage();
     }
     if (currentSection === "subcategorias") {
-      rebuildAddViewSections();
+      safeRebuildAddViewSections();
       subcatCatalogosLoaded = false;
       loadSubcatCatalogos();
       loadSubcategoriasManage();
     }
     if (currentSection === "motivos-movimiento") {
-      rebuildAddViewSections();
+      safeRebuildAddViewSections();
       loadMotivosManage();
     }
     if (currentSection === "proveedores") {
-      rebuildAddViewSections();
+      safeRebuildAddViewSections();
       loadProveedoresManage();
     }
     if (currentSection === "productos") {
-      rebuildAddViewSections();
+      safeRebuildAddViewSections();
       initProductosCollapsibles();
       prdCatalogosLoaded = false;
       loadCatalogosProductos();
@@ -1538,19 +2140,19 @@ document.querySelectorAll(".menuBtn[data-section]").forEach((b) => {
       loadProductosManage();
     }
     if (currentSection === "limites") {
-      rebuildAddViewSections();
+      safeRebuildAddViewSections();
       limCatalogosLoaded = false;
       loadLimCatalogos();
       loadLimitesList();
     }
     if (currentSection === "reglas-subcategorias") {
-      rebuildAddViewSections();
+      safeRebuildAddViewSections();
       regCatalogosLoaded = false;
       loadRegCatalogos();
       loadReglasList();
     }
     if (currentSection === "usuarios") {
-      rebuildAddViewSections();
+      safeRebuildAddViewSections();
       initUserAccordions();
       usrRolesLoaded = false;
       usrBodegasLoaded = false;
@@ -2111,6 +2713,8 @@ let repDiaWarehouseLoaded = false;
 let repDiaCanAllBodegas = false;
 let repDiaRowsCache = [];
 let repDiaApplyInFlight = false;
+let repCuadreWarehouseLoaded = false;
+let repCuadreCanAllBodegas = false;
 let cuadreWarehouseLoaded = false;
 let cuadreCanAllBodegas = false;
 let cuadreDetailRows = [];
@@ -2628,6 +3232,153 @@ async function loadReporteExistenciasSubcategorias() {
       `<option value="">Todas las subcategorias</option>` +
       rows.map((s) => `<option value="${s.id_subcategoria}">${s.nombre_subcategoria}</option>`).join("");
   } catch {}
+}
+
+async function loadReporteCuadreWarehouseFilter(force = false) {
+  const sel = $("#repCuadreWarehouse");
+  if (!sel) return;
+  if (repCuadreWarehouseLoaded && !force) return;
+  try {
+    const r = await fetch("/api/cuadre-caja/context", {
+      headers: { Authorization: "Bearer " + token },
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return;
+    const rows = Array.isArray(j.bodegas) ? j.bodegas : [];
+    repCuadreCanAllBodegas = Number(j.can_all_bodegas) === 1 || j.can_all_bodegas === true;
+    if (repCuadreCanAllBodegas) {
+      sel.innerHTML = `<option value="">Todas las bodegas</option>` +
+        rows.map((b) => `<option value="${b.id_bodega}">${escapeHtml(b.nombre_bodega || "")}</option>`).join("");
+      sel.disabled = false;
+      if (Number(j.id_bodega_default || 0) > 0) sel.value = String(j.id_bodega_default);
+    } else {
+      sel.innerHTML = rows.map((b) => `<option value="${b.id_bodega}">${escapeHtml(b.nombre_bodega || "")}</option>`).join("");
+      if (Number(j.id_bodega_default || 0) > 0) sel.value = String(j.id_bodega_default);
+      sel.disabled = true;
+    }
+    repCuadreWarehouseLoaded = true;
+  } catch {}
+}
+
+function openStoredCuadrePrint(fecha, idBodega = 0, format = "carta") {
+  const fmt = String(format || "carta").toLowerCase() === "pos" ? "pos" : "carta";
+  const qs = new URLSearchParams({
+    token: token || "",
+    fecha: String(fecha || "").trim(),
+    format: fmt,
+  });
+  if (Number(idBodega || 0) > 0) qs.set("warehouse", String(Number(idBodega || 0)));
+  window.open(`${API_ORIGIN}/api/print/cuadre-caja?${qs.toString()}`, "_blank");
+}
+
+async function openCuadreRecordFromReport(fecha, idBodega = 0) {
+  if (!String(fecha || "").trim()) return;
+  if (currentSection !== "cuadre-caja") {
+    document.querySelector('.menuBtn[data-section="cuadre-caja"]')?.click();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  }
+  await loadCuadreWarehouseFilter();
+  if ($("#cuadreFecha")) setDateInputValue($("#cuadreFecha"), String(fecha || "").trim());
+  if ($("#cuadreWarehouse") && Number(idBodega || 0) > 0) {
+    $("#cuadreWarehouse").value = String(Number(idBodega || 0));
+  }
+  await loadCuadreCaja();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function loadReporteCuadresCaja() {
+  await loadReporteCuadreWarehouseFilter();
+  const tb = $("#repCuadreList");
+  const resume = $("#repCuadreResume");
+  if (!tb) return;
+  const fecha = toYmd($("#repCuadreFecha")?.value || "") || "";
+  const responsable = String($("#repCuadreResponsable")?.value || "").trim();
+  const warehouse = Number($("#repCuadreWarehouse")?.value || 0) || "";
+  const qs = new URLSearchParams({ limit: "200" });
+  if (fecha) qs.set("fecha", fecha);
+  if (responsable) qs.set("responsable", responsable);
+  if (warehouse) qs.set("warehouse", String(warehouse));
+  tb.innerHTML = `<tr><td colspan="9">Cargando...</td></tr>`;
+  try {
+    const r = await fetch(`/api/reportes/cuadre-caja?${qs.toString()}`, {
+      headers: { Authorization: "Bearer " + token },
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      tb.innerHTML = `<tr><td colspan="9">${escapeHtml(j?.error || "Error al cargar reporte.")}</td></tr>`;
+      if (resume) resume.innerHTML = `<span class="pill ghost">Error</span>`;
+      return;
+    }
+    const rows = Array.isArray(j.rows) ? j.rows : [];
+    if (!rows.length) {
+      tb.innerHTML = `<tr><td colspan="9">Sin cuadres para esos filtros.</td></tr>`;
+      if (resume) resume.innerHTML = `<span class="pill ghost">Sin resultados</span>`;
+      return;
+    }
+    if (resume) {
+      resume.innerHTML = `
+        <span class="pill ghost">Registros: <strong>${rows.length}</strong></span>
+        <span class="pill ghost">Filtro fecha: <strong>${fecha ? fmtDateOnly(fecha) : "Todas"}</strong></span>
+        <span class="pill ghost">Responsable: <strong>${escapeHtml(responsable || "Todos")}</strong></span>
+      `;
+    }
+    tb.innerHTML = rows.map((row) => {
+      const rowFecha = toYmd(row.fecha) || String(row.fecha || "").trim();
+      return `
+      <tr>
+        <td>${fmtDateOnly(rowFecha)}</td>
+        <td>${escapeHtml(row.nombre_bodega || row.sede || "-")}</td>
+        <td>${escapeHtml(row.responsable || "-")}</td>
+        <td>${fmtMoney(row.total_efectivo || 0)}</td>
+        <td>${fmtMoney(row.total_cobro || 0)}</td>
+        <td>${fmtMoney(row.total_venta_ambiente || 0)}</td>
+        <td>${fmtMoney(row.gran_total_reporte || 0)}</td>
+        <td>${fmtDateTime(row.actualizado_en)}</td>
+        <td>
+          <div class="addRow" style="justify-content:flex-start; gap:6px;">
+            <button class="btn soft btn-sm" data-rep-cuadre-open="${escapeHtml(rowFecha)}" data-rep-cuadre-wh="${Number(row.id_bodega || 0)}" type="button">Cargar</button>
+            <button class="btn soft btn-sm" data-rep-cuadre-pos="${escapeHtml(rowFecha)}" data-rep-cuadre-wh="${Number(row.id_bodega || 0)}" type="button">POS</button>
+            <button class="btn soft btn-sm" data-rep-cuadre-carta="${escapeHtml(rowFecha)}" data-rep-cuadre-wh="${Number(row.id_bodega || 0)}" type="button">Carta</button>
+          </div>
+        </td>
+      </tr>
+    `;
+    }).join("");
+    tb.querySelectorAll("[data-rep-cuadre-open]").forEach((btn) => {
+      btn.onclick = () => openCuadreRecordFromReport(btn.dataset.repCuadreOpen || "", Number(btn.dataset.repCuadreWh || 0));
+    });
+    tb.querySelectorAll("[data-rep-cuadre-pos]").forEach((btn) => {
+      btn.onclick = () => openStoredCuadrePrint(btn.dataset.repCuadrePos || "", Number(btn.dataset.repCuadreWh || 0), "pos");
+    });
+    tb.querySelectorAll("[data-rep-cuadre-carta]").forEach((btn) => {
+      btn.onclick = () => openStoredCuadrePrint(btn.dataset.repCuadreCarta || "", Number(btn.dataset.repCuadreWh || 0), "carta");
+    });
+  } catch {
+    tb.innerHTML = `<tr><td colspan="9">Error de red.</td></tr>`;
+    if (resume) resume.innerHTML = `<span class="pill ghost">Error de red</span>`;
+  }
+}
+
+if ($("#repCuadreSearch")) {
+  $("#repCuadreSearch").onclick = () => loadReporteCuadresCaja();
+}
+if ($("#repCuadreClear")) {
+  $("#repCuadreClear").onclick = async () => {
+    if ($("#repCuadreFecha")) $("#repCuadreFecha").value = "";
+    if ($("#repCuadreResponsable")) $("#repCuadreResponsable").value = "";
+    repCuadreWarehouseLoaded = false;
+    await loadReporteCuadreWarehouseFilter(true);
+    if ($("#repCuadreList")) $("#repCuadreList").innerHTML = `<tr><td colspan="9">Usa los filtros y presiona Buscar.</td></tr>`;
+    if ($("#repCuadreResume")) $("#repCuadreResume").innerHTML = `<span class="pill ghost">Usa los filtros y presiona Buscar.</span>`;
+  };
+}
+if ($("#repCuadreResponsable")) {
+  $("#repCuadreResponsable").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      loadReporteCuadresCaja();
+    }
+  });
 }
 
 async function loadReporteEntradasCatalogos() {
@@ -7074,6 +7825,23 @@ async function loadBodegasManage() {
       tb.innerHTML = `<tr><td colspan="7">Sin bodegas</td></tr>`;
       return;
     }
+
+    const destSel = $("#bodDestino");
+    const destEditSel = $("#bodEditDestino");
+    const prevDest = String(destSel?.value || "");
+    const prevDestEdit = String(destEditSel?.value || "");
+    const destOpts =
+      `<option value="">Sin destino default</option>` +
+      rows.map((b) => `<option value="${b.id_bodega}">${escapeHtml(b.nombre_bodega || "")}</option>`).join("");
+    if (destSel) {
+      destSel.innerHTML = destOpts;
+      if (prevDest && rows.some((b) => String(b.id_bodega) === prevDest)) destSel.value = prevDest;
+    }
+    if (destEditSel) {
+      destEditSel.innerHTML = destOpts;
+      if (prevDestEdit && rows.some((b) => String(b.id_bodega) === prevDestEdit)) destEditSel.value = prevDestEdit;
+    }
+
     tb.innerHTML = rows
       .map(
         (b) => `
@@ -7263,6 +8031,7 @@ async function loadCategoriasManage() {
         $("#catEditId").value = String(c.id_categoria);
         $("#catEditNombre").value = c.nombre_categoria || "";
         $("#catEditActivo").value = Number(c.activo) ? "1" : "0";
+        openAdminCollapseSection('view-categorias', 'Editar categoria');
       };
     });
 
@@ -7441,6 +8210,7 @@ async function loadSubcategoriasManage() {
         $("#subCatEditCategoria").value = s.id_categoria ? String(s.id_categoria) : "";
         $("#subCatEditNombre").value = s.nombre_subcategoria || "";
         $("#subCatEditActivo").value = Number(s.activo) ? "1" : "0";
+        openAdminCollapseSection('view-subcategorias', 'Editar subcategoria');
       };
     });
 
@@ -7618,6 +8388,7 @@ async function loadProveedoresManage() {
         $("#provEditTelefono").value = p.telefono || "";
         $("#provEditDireccion").value = p.direccion || "";
         $("#provEditActivo").value = Number(p.activo) ? "1" : "0";
+        openAdminCollapseSection('view-proveedores', 'Editar proveedor');
       };
     });
 
@@ -9252,10 +10023,7 @@ async function loadProductosManage() {
         $("#prdEditCategoria").value = p.id_categoria ? String(p.id_categoria) : "";
         await loadSubcategoriasProducto(p.id_categoria, "#prdEditSubcategoria", p.id_subcategoria || "");
         await loadProductVisibleWarehouses(p.id_producto, "#prdEditVisibleWarehouses");
-        const editSection = Array.from(document.querySelectorAll("#view-productos [data-prd-collapse]")).find(
-          (sec) => sec.querySelector(".panelTitle")?.textContent?.trim() === "Editar producto"
-        );
-        syncProductosCollapseState(editSection, true);
+        openAdminCollapseSection('view-productos', 'Editar producto');
       };
     });
   } catch {
@@ -9769,6 +10537,7 @@ async function loadLimitesList() {
         $("#limEditMin").value = String(it.minimo ?? 0);
         $("#limEditMax").value = String(it.maximo ?? 0);
         $("#limEditActive").value = Number(it.activo) ? "1" : "0";
+        openAdminCollapseSection('view-limites', 'Editar limite');
       };
     });
 
@@ -9972,6 +10741,7 @@ async function loadReglasList() {
         $("#regEditMaxDays").value = String(it.max_dias_vida ?? 0);
         $("#regEditAlertDays").value = String(it.dias_alerta_antes ?? 0);
         $("#regEditActive").value = Number(it.activo) ? "1" : "0";
+        openAdminCollapseSection('view-reglas-subcategorias', 'Editar regla');
       };
     });
 
@@ -12046,7 +12816,7 @@ async function openLotsModal(id) {
       body.innerHTML = `<tr><td colspan="6">Error al cargar</td></tr>`;
       return;
     }
-    info.textContent = `Pedido #${id} • ${j.count || 0} lotes`;
+    info.textContent = `Pedido #${id} - ${j.count || 0} lotes`;
     const rows = j.rows || [];
     if (!rows.length) {
       body.innerHTML = `<tr><td colspan="6">Sin lotes despachados.</td></tr>`;
@@ -12086,15 +12856,14 @@ if ($("#pedLotsOk")) $("#pedLotsOk").onclick = closeLotsModal;
 
 /* ===== Cuadre Caja ===== */
 const CUADRE_DENOMS = [0.25, 0.5, 1, 5, 10, 20, 50, 100, 200];
+const CUADRE_DOLAR_DENOM_USD = 1;
+const CUADRE_DOLAR_TIPO_CAMBIO = 7.3;
 const CUADRE_VENTAS_SUGERIDAS = [
   "Flor de Cafe",
   "Restaurante",
   "Nilas",
-  "ElDeck",
-  "Cactus",
-  "Gelato",
-  "Jazmin",
 ];
+let cuadreDynamicDenoms = [...CUADRE_DENOMS];
 
 function cuadreTodayYmd() {
   const now = new Date();
@@ -12135,6 +12904,31 @@ function cuadreParseNum(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function cuadreFormatDenomLabel(value) {
+  const num = Math.max(0, cuadreParseNum(value));
+  const normalized = Number(num.toFixed(2));
+  return normalized % 1 === 0 ? String(normalized.toFixed(0)) : normalized.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function normalizeCuadreDenoms(values = []) {
+  const seen = new Set();
+  const merged = [...CUADRE_DENOMS, ...(Array.isArray(values) ? values : [])]
+    .map((v) => Number(cuadreParseNum(v).toFixed(2)))
+    .filter((v) => v > 0)
+    .sort((a, b) => a - b);
+  return merged.filter((v) => {
+    const key = v.toFixed(2);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function cuadreDraftStorageKey() {
+  const userKey = String(me?.id_user || me?.username || me?.full_name || "anon").trim() || "anon";
+  return `cuadre-caja-draft:${userKey}`;
+}
+
 function cuadreAmbienteKey(name) {
   const raw = String(name || "")
     .normalize("NFD")
@@ -12164,21 +12958,20 @@ function getSelectedCuadreWarehouseId() {
 
 function buildCuadreDefaultPayload() {
   const monedas = {};
-  CUADRE_DENOMS.forEach((d) => {
+  normalizeCuadreDenoms(CUADRE_DENOMS).forEach((d) => {
     monedas[String(d)] = 0;
   });
   return {
     sede: "",
     responsable: String(me?.full_name || "").trim(),
     monedas,
-    monedas_sueltas: 0,
     pagos: {
-      dolares: 0,
+      dolares_cantidad: 0,
       visa: 0,
       bancos: 0,
       cxc_trabajadores: 0,
       cxc_habitaciones: 0,
-      day: 0,
+      pase_consumible: 0,
     },
     ventas_rows: CUADRE_VENTAS_SUGERIDAS.map((x) => ({ ambiente: x, monto: 0 })),
     extras: {
@@ -12211,22 +13004,72 @@ function normalizeCuadreVentasRows(rows) {
     .slice(0, 250);
 }
 
+function getCuadreMonedasFromDom() {
+  const monedas = {};
+  document.querySelectorAll("[data-cuadre-denom]").forEach((input) => {
+    const denom = Number(input?.dataset?.cuadreDenom || 0);
+    if (denom <= 0) return;
+    monedas[String(Number(denom.toFixed(2)))] = Math.max(0, cuadreParseNum(input.value || 0));
+  });
+  return monedas;
+}
+
+function getCuadreDollarQtyFromDom() {
+  return Math.max(0, cuadreParseNum(document.querySelector("[data-cuadre-dollar-qty]")?.value || 0));
+}
+
+function renderCuadreCashRows(sourceMonedas = null, sourceDollarQty = null) {
+  const tb = $("#cuadreCashRows");
+  if (!tb) return;
+  const monedas = sourceMonedas && typeof sourceMonedas === "object" ? sourceMonedas : getCuadreMonedasFromDom();
+  const dollarQty = sourceDollarQty === null ? getCuadreDollarQtyFromDom() : Math.max(0, cuadreParseNum(sourceDollarQty || 0));
+  cuadreDynamicDenoms = normalizeCuadreDenoms(Object.keys(monedas).map((k) => cuadreParseNum(k)));
+  const rows = cuadreDynamicDenoms
+    .map((d) => {
+      const label = cuadreFormatDenomLabel(d);
+      const isBase = CUADRE_DENOMS.some((base) => Number(base.toFixed(2)) === Number(d.toFixed(2)));
+      const qty = Math.max(0, cuadreParseNum(monedas[String(d)] || 0));
+      return `
+      <tr>
+        <td class="cuadreDenomCol cuadreDenomCol-label"><span class="cuadreDenomBadge">Q${escapeHtml(label)}</span></td>
+        <td class="cuadreDenomCol cuadreDenomCol-qty"><input class="in cuadreQtyInput" data-cuadre-denom="${label}" type="number" min="0" step="1" value="${String(qty)}" placeholder="0" /></td>
+        <td class="cuadreDenomCol cuadreDenomCol-total"><span class="cuadreLineTotal" data-cuadre-line-total="${label}">${fmtMoney(qty * d)}</span></td>
+        <td class="cuadreDenomCol cuadreDenomCol-action">${isBase ? `<span class="pill ghost">Base</span>` : `<button class="btn soft btn-sm" data-cuadre-denom-remove="${label}" type="button">Quitar</button>`}</td>
+      </tr>
+    `;
+    });
+  rows.push(`
+      <tr>
+        <td class="cuadreDenomCol cuadreDenomCol-label"><span class="cuadreDenomBadge">$${escapeHtml(String(CUADRE_DOLAR_DENOM_USD))}</span></td>
+        <td class="cuadreDenomCol cuadreDenomCol-qty"><input class="in cuadreQtyInput" data-cuadre-dollar-qty="1" type="number" min="0" step="1" value="${String(dollarQty)}" placeholder="0" /></td>
+        <td class="cuadreDenomCol cuadreDenomCol-total"><span class="cuadreLineTotal" data-cuadre-dollar-total="1">$${fmtMoney(dollarQty * CUADRE_DOLAR_DENOM_USD)}</span></td>
+        <td class="cuadreDenomCol cuadreDenomCol-action"><span class="pill ghost">Q${fmtMoney(CUADRE_DOLAR_TIPO_CAMBIO)}</span></td>
+      </tr>
+    `);
+  tb.innerHTML = rows.join("");
+}
+
 function renderCuadreDetailRows(rows = []) {
   const tb = $("#cuadreDetailList");
   if (!tb) return;
-  cuadreDetailRows = normalizeCuadreDetailRows(rows);
-  if (!cuadreDetailRows.length) {
-    tb.innerHTML = `<tr><td colspan="5">Sin detalle</td></tr>`;
-    return;
-  }
-  tb.innerHTML = cuadreDetailRows
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  cuadreDetailRows = normalizeCuadreDetailRows(sourceRows);
+  const renderRows = sourceRows.length
+    ? sourceRows.map((row) => ({
+        descripcion: String(row?.descripcion || "").trim(),
+        nombre: String(row?.nombre || "").trim(),
+        monto: Math.max(0, cuadreParseNum(row?.monto || 0)),
+        check_no: String(row?.check_no || "").trim(),
+      }))
+    : [{ descripcion: "", nombre: "", monto: 0, check_no: "" }];
+  tb.innerHTML = renderRows
     .map(
       (row, idx) => `
       <tr>
-        <td><input class="in" data-cuadre-detail-field="descripcion" data-cuadre-detail-idx="${idx}" value="${escapeHtml(row.descripcion)}" /></td>
-        <td><input class="in" data-cuadre-detail-field="nombre" data-cuadre-detail-idx="${idx}" value="${escapeHtml(row.nombre)}" /></td>
+        <td><input class="in" data-cuadre-detail-field="descripcion" data-cuadre-detail-idx="${idx}" value="${escapeHtml(row.descripcion)}" placeholder="Ej. Cortesia funcionarios" /></td>
+        <td><input class="in" data-cuadre-detail-field="nombre" data-cuadre-detail-idx="${idx}" value="${escapeHtml(row.nombre)}" placeholder="Nombre o referencia" /></td>
         <td><input class="in" data-cuadre-detail-field="monto" data-cuadre-detail-idx="${idx}" type="number" min="0" step="0.01" value="${String(row.monto || 0)}" /></td>
-        <td><input class="in" data-cuadre-detail-field="check_no" data-cuadre-detail-idx="${idx}" value="${escapeHtml(row.check_no)}" /></td>
+        <td><input class="in" data-cuadre-detail-field="check_no" data-cuadre-detail-idx="${idx}" value="${escapeHtml(row.check_no)}" placeholder="Check o nota" /></td>
         <td><button class="btn soft btn-sm" data-cuadre-detail-remove="${idx}" type="button">Quitar</button></td>
       </tr>
     `
@@ -12237,16 +13080,19 @@ function renderCuadreDetailRows(rows = []) {
 function renderCuadreVentasRows(rows = []) {
   const tb = $("#cuadreVentasList");
   if (!tb) return;
-  const out = normalizeCuadreVentasRows(rows);
-  if (!out.length) {
-    tb.innerHTML = `<tr><td colspan="3">Sin ventas</td></tr>`;
-    return;
-  }
-  tb.innerHTML = out
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const out = normalizeCuadreVentasRows(sourceRows);
+  const renderRows = sourceRows.length
+    ? sourceRows.map((row) => ({
+        ambiente: String(row?.ambiente || "").trim(),
+        monto: Math.max(0, cuadreParseNum(row?.monto || 0)),
+      }))
+    : (out.length ? out : [{ ambiente: "", monto: 0 }]);
+  tb.innerHTML = renderRows
     .map(
       (row, idx) => `
       <tr>
-        <td><input class="in" data-cuadre-venta-field="ambiente" data-cuadre-venta-idx="${idx}" value="${escapeHtml(row.ambiente)}" placeholder="Ambiente" /></td>
+        <td><input class="in" data-cuadre-venta-field="ambiente" data-cuadre-venta-idx="${idx}" value="${escapeHtml(row.ambiente)}" placeholder="Ej. Restaurante" /></td>
         <td><input class="in" data-cuadre-venta-field="monto" data-cuadre-venta-idx="${idx}" type="number" min="0" step="0.01" value="${String(row.monto || 0)}" /></td>
         <td><button class="btn soft btn-sm" data-cuadre-venta-remove="${idx}" type="button">Quitar</button></td>
       </tr>
@@ -12303,97 +13149,69 @@ function ventasRowsFromPayload(payload = {}) {
     ["Flor de Cafe", Number(ventasObj.flor_cafe || 0)],
     ["Restaurante", Number(ventasObj.restaurante || 0)],
     ["Nilas", Number(ventasObj.nilas || 0)],
-    ["ElDeck", Number(ventasObj.eldeck || 0)],
-    ["Cactus", Number(ventasObj.cactus || 0)],
-    ["Gelato", Number(ventasObj.gelato || 0)],
-    ["Jazmin", Number(ventasObj.jazmin || 0)],
   ].map(([ambiente, monto]) => ({ ambiente, monto }));
   return normalizeCuadreVentasRows(fromKnown);
 }
 
-function applyCuadrePayload(payload = {}) {
-  const base = buildCuadreDefaultPayload();
-  const data = {
-    ...base,
-    ...(payload && typeof payload === "object" ? payload : {}),
-    monedas: {
-      ...base.monedas,
-      ...((payload && payload.monedas && typeof payload.monedas === "object") ? payload.monedas : {}),
-    },
-    pagos: {
-      ...base.pagos,
-      ...((payload && payload.pagos && typeof payload.pagos === "object") ? payload.pagos : {}),
-    },
-    extras: {
-      ...base.extras,
-      ...((payload && payload.extras && typeof payload.extras === "object") ? payload.extras : {}),
-    },
-  };
-
-  if ($("#cuadreSede")) $("#cuadreSede").value = String(data.sede || "");
-  if ($("#cuadreResponsable")) $("#cuadreResponsable").value = String(data.responsable || "");
-
-  CUADRE_DENOMS.forEach((d) => {
-    const input = document.querySelector(`[data-cuadre-denom="${d}"]`);
-    if (input) input.value = String(Math.max(0, cuadreParseNum(data.monedas[String(d)] || 0)));
-  });
-
-  setCuadreNumberValue("#cuadreMonedasSueltas", data.monedas_sueltas || 0);
-  setCuadreNumberValue("#cuadreDolares", data.pagos.dolares || 0);
-  setCuadreNumberValue("#cuadreVisa", data.pagos.visa || 0);
-  setCuadreNumberValue("#cuadreBancos", data.pagos.bancos || 0);
-  setCuadreNumberValue("#cuadreCxcTrabajadores", data.pagos.cxc_trabajadores || 0);
-  setCuadreNumberValue("#cuadreCxcHabitaciones", data.pagos.cxc_habitaciones || 0);
-  setCuadreNumberValue("#cuadreDay", data.pagos.day || 0);
-  setCuadreNumberValue("#cuadrePedidosNilas", data.extras.pedidos_nilas || 0);
-  setCuadreNumberValue("#cuadreCortesias", data.extras.cortesias || 0);
-
-  renderCuadreVentasRows(ventasRowsFromPayload(data));
-  renderCuadreDetailRows(data.detalle || []);
-  updateCuadreTotals();
+function cuadreWritePreviewLines(targetId, lines = [], emptyText = "Sin datos") {
+  const target = $(targetId);
+  if (!target) return;
+  if (!lines.length) {
+    target.innerHTML = `<div class="cuadreTicketEmpty">${escapeHtml(emptyText)}</div>`;
+    return;
+  }
+  target.innerHTML = lines.map((line) => `<div class="cuadreTicketLine"><span>${escapeHtml(line.label)}</span><strong>${escapeHtml(line.value)}</strong></div>`).join("");
 }
 
-function updateCuadreTotals() {
-  let efectivoDenoms = 0;
-  CUADRE_DENOMS.forEach((d) => {
-    const input = document.querySelector(`[data-cuadre-denom="${d}"]`);
-    const qty = Math.max(0, cuadreParseNum(input?.value || 0));
-    const line = qty * Number(d);
-    efectivoDenoms += line;
-    const label = document.querySelector(`[data-cuadre-line-total="${d}"]`);
-    if (label) label.textContent = fmtMoney(line);
-  });
+function renderCuadreTicketPreview(snapshot = {}) {
+  const fecha = $("#cuadreFecha")?.value || cuadreTodayYmd();
+  const bodegaTxt = $("#cuadreWarehouse")?.selectedOptions?.[0]?.textContent?.trim() || $("#cuadreSede")?.value?.trim() || "-";
+  const responsable = String($("#cuadreResponsable")?.value || me?.full_name || "").trim() || "-";
+  if ($("#cuadrePreviewFecha")) $("#cuadrePreviewFecha").textContent = fecha ? fmtDateOnly(fecha) : "-";
+  if ($("#cuadrePreviewBodega")) $("#cuadrePreviewBodega").textContent = bodegaTxt;
+  if ($("#cuadrePreviewResponsable")) $("#cuadrePreviewResponsable").textContent = responsable;
 
-  const monedasSueltas = Math.max(0, cuadreParseNum($("#cuadreMonedasSueltas")?.value || 0));
-  const dolares = Math.max(0, cuadreParseNum($("#cuadreDolares")?.value || 0));
-  const visa = Math.max(0, cuadreParseNum($("#cuadreVisa")?.value || 0));
-  const bancos = Math.max(0, cuadreParseNum($("#cuadreBancos")?.value || 0));
-  const cxcTrab = Math.max(0, cuadreParseNum($("#cuadreCxcTrabajadores")?.value || 0));
-  const cxcHab = Math.max(0, cuadreParseNum($("#cuadreCxcHabitaciones")?.value || 0));
-  const day = Math.max(0, cuadreParseNum($("#cuadreDay")?.value || 0));
+  const monedas = snapshot.monedas && typeof snapshot.monedas === "object" ? snapshot.monedas : getCuadreMonedasFromDom();
+  const cashLines = normalizeCuadreDenoms(Object.keys(monedas).map((k) => cuadreParseNum(k)))
+    .map((d) => {
+      const qty = Math.max(0, cuadreParseNum(monedas[String(d)] || 0));
+      if (qty <= 0) return null;
+      return { label: `Q${cuadreFormatDenomLabel(d)} x ${qty}`, value: fmtMoney(qty * d) };
+    })
+    .filter(Boolean);
+  const dolaresCantidad = Math.max(0, cuadreParseNum(getCuadreDollarQtyFromDom() || 0));
+  if (dolaresCantidad > 0) {
+    cashLines.push({
+      label: `$${CUADRE_DOLAR_DENOM_USD} x ${dolaresCantidad}`,
+      value: `$${fmtMoney(dolaresCantidad * CUADRE_DOLAR_DENOM_USD)}`,
+    });
+  }
+  cuadreWritePreviewLines("#cuadrePreviewCashLines", cashLines, "Sin denominaciones capturadas");
 
-  const ventasRows = collectCuadreVentasRowsFromDom();
-  const totalVentaAmbiente = ventasRows.reduce((acc, row) => acc + Number(row.monto || 0), 0);
+  const paymentLines = [
+    ["Visa", "#cuadreVisa"],
+    ["Bancos", "#cuadreBancos"],
+    ["CxC Trabajadores", "#cuadreCxcTrabajadores"],
+    ["CxC Habitaciones", "#cuadreCxcHabitaciones"],
+    ["Pase Consumible", "#cuadrePaseConsumible"],
+  ]
+    .map(([label, id]) => ({ label, amount: Math.max(0, cuadreParseNum($(id)?.value || 0)) }))
+    .filter((line) => line.amount > 0)
+    .map((line) => ({ label: line.label, value: fmtMoney(line.amount) }));
+  cuadreWritePreviewLines("#cuadrePreviewPaymentLines", paymentLines, "Sin otros cobros");
 
-  const pedidosNilas = Math.max(0, cuadreParseNum($("#cuadrePedidosNilas")?.value || 0));
-  const cortesias = Math.max(0, cuadreParseNum($("#cuadreCortesias")?.value || 0));
+  const ventasLines = collectCuadreVentasRowsFromDom()
+    .filter((row) => row.ambiente || row.monto > 0)
+    .map((row) => ({ label: row.ambiente || "Ambiente", value: fmtMoney(row.monto || 0) }));
+  cuadreWritePreviewLines("#cuadrePreviewVentasLines", ventasLines, "Sin ambientes capturados");
 
-  const totalEfectivo = efectivoDenoms + monedasSueltas;
-  const totalCobro = totalEfectivo + dolares + visa + bancos + cxcTrab + cxcHab + day;
-  const granTotal = totalVentaAmbiente + pedidosNilas + cortesias;
-
-  if ($("#cuadreMonedasSueltasLbl")) $("#cuadreMonedasSueltasLbl").textContent = fmtMoney(monedasSueltas);
-  if ($("#cuadreTotalEfectivo")) $("#cuadreTotalEfectivo").textContent = fmtMoney(totalEfectivo);
-  if ($("#cuadreTotalCobro")) $("#cuadreTotalCobro").textContent = fmtMoney(totalCobro);
-  if ($("#cuadreTotalVentaAmbiente")) $("#cuadreTotalVentaAmbiente").textContent = fmtMoney(totalVentaAmbiente);
-  if ($("#cuadreGranTotal")) $("#cuadreGranTotal").textContent = fmtMoney(granTotal);
-
-  return {
-    total_efectivo: totalEfectivo,
-    total_cobro: totalCobro,
-    total_venta_ambiente: totalVentaAmbiente,
-    gran_total_reporte: granTotal,
-  };
+  if ($("#cuadrePreviewTotalDolaresQtz")) $("#cuadrePreviewTotalDolaresQtz").textContent = fmtMoney(snapshot.total_dolares_quetzales || 0);
+  if ($("#cuadrePreviewTotalEfectivo")) $("#cuadrePreviewTotalEfectivo").textContent = fmtMoney(snapshot.total_efectivo || 0);
+  if ($("#cuadrePreviewTotalCobro")) $("#cuadrePreviewTotalCobro").textContent = fmtMoney(snapshot.total_cobro || 0);
+  if ($("#cuadrePreviewPedidosNilas")) $("#cuadrePreviewPedidosNilas").textContent = fmtMoney(snapshot.pedidos_nilas || 0);
+  if ($("#cuadrePreviewCortesias")) $("#cuadrePreviewCortesias").textContent = fmtMoney(snapshot.cortesias || 0);
+  if ($("#cuadrePreviewGranTotal")) $("#cuadrePreviewGranTotal").textContent = fmtMoney(snapshot.gran_total_reporte || 0);
+  if ($("#cuadrePreviewMetaNote")) $("#cuadrePreviewMetaNote").textContent = `Borrador local del usuario ${responsable}.`;
 }
 
 function buildVentasObjectFromRows(ventasRows = []) {
@@ -12415,27 +13233,20 @@ function buildVentasObjectFromRows(ventasRows = []) {
 }
 
 function buildCuadrePayloadFromUI() {
-  const monedas = {};
-  CUADRE_DENOMS.forEach((d) => {
-    const input = document.querySelector(`[data-cuadre-denom="${d}"]`);
-    monedas[String(d)] = Math.max(0, cuadreParseNum(input?.value || 0));
-  });
-
+  const monedas = getCuadreMonedasFromDom();
   const ventas_rows = collectCuadreVentasRowsFromDom();
   const ventas = buildVentasObjectFromRows(ventas_rows);
-
   return {
     sede: String($("#cuadreSede")?.value || "").trim(),
-    responsable: String($("#cuadreResponsable")?.value || "").trim(),
+    responsable: String(me?.full_name || "").trim(),
     monedas,
-    monedas_sueltas: Math.max(0, cuadreParseNum($("#cuadreMonedasSueltas")?.value || 0)),
     pagos: {
-      dolares: Math.max(0, cuadreParseNum($("#cuadreDolares")?.value || 0)),
+      dolares_cantidad: Math.max(0, cuadreParseNum(getCuadreDollarQtyFromDom() || 0)),
       visa: Math.max(0, cuadreParseNum($("#cuadreVisa")?.value || 0)),
       bancos: Math.max(0, cuadreParseNum($("#cuadreBancos")?.value || 0)),
       cxc_trabajadores: Math.max(0, cuadreParseNum($("#cuadreCxcTrabajadores")?.value || 0)),
       cxc_habitaciones: Math.max(0, cuadreParseNum($("#cuadreCxcHabitaciones")?.value || 0)),
-      day: Math.max(0, cuadreParseNum($("#cuadreDay")?.value || 0)),
+      pase_consumible: Math.max(0, cuadreParseNum($("#cuadrePaseConsumible")?.value || 0)),
     },
     ventas,
     ventas_rows,
@@ -12445,6 +13256,127 @@ function buildCuadrePayloadFromUI() {
     },
     detalle: collectCuadreDetailRowsFromDom(),
   };
+}
+
+function saveCuadreDraftLocal() {
+  if (!$("#view-cuadre-caja")) return;
+  try {
+    const draft = {
+      fecha: $("#cuadreFecha")?.value || cuadreTodayYmd(),
+      id_bodega: Number($("#cuadreWarehouse")?.value || 0),
+      payload: buildCuadrePayloadFromUI(),
+      updated_at: new Date().toISOString(),
+    };
+    localStorage.setItem(cuadreDraftStorageKey(), JSON.stringify(draft));
+  } catch {}
+}
+
+function loadCuadreDraftLocal() {
+  try {
+    const raw = localStorage.getItem(cuadreDraftStorageKey());
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearCuadreDraftLocal() {
+  try {
+    localStorage.removeItem(cuadreDraftStorageKey());
+  } catch {}
+}
+
+function applyCuadrePayload(payload = {}) {
+  const base = buildCuadreDefaultPayload();
+  const rawPayload = payload && typeof payload === "object" ? payload : {};
+  const data = {
+    ...base,
+    ...rawPayload,
+    monedas: {
+      ...base.monedas,
+      ...((rawPayload.monedas && typeof rawPayload.monedas === "object") ? rawPayload.monedas : {}),
+    },
+    pagos: {
+      ...base.pagos,
+      ...((rawPayload.pagos && typeof rawPayload.pagos === "object") ? rawPayload.pagos : {}),
+      pase_consumible: Number((rawPayload.pagos && typeof rawPayload.pagos === "object") ? (rawPayload.pagos.pase_consumible ?? rawPayload.pagos.day ?? 0) : 0),
+    },
+    extras: {
+      ...base.extras,
+      ...((rawPayload.extras && typeof rawPayload.extras === "object") ? rawPayload.extras : {}),
+    },
+  };
+
+  if ($("#cuadreSede")) $("#cuadreSede").value = String(data.sede || "");
+  if ($("#cuadreResponsable")) $("#cuadreResponsable").value = String(me?.full_name || data.responsable || "").trim();
+
+  renderCuadreCashRows(data.monedas || {}, data.pagos.dolares_cantidad || 0);
+  setCuadreNumberValue("#cuadreVisa", data.pagos.visa || 0);
+  setCuadreNumberValue("#cuadreBancos", data.pagos.bancos || 0);
+  setCuadreNumberValue("#cuadreCxcTrabajadores", data.pagos.cxc_trabajadores || 0);
+  setCuadreNumberValue("#cuadreCxcHabitaciones", data.pagos.cxc_habitaciones || 0);
+  setCuadreNumberValue("#cuadrePaseConsumible", data.pagos.pase_consumible ?? (data.pagos.day || 0));
+  setCuadreNumberValue("#cuadrePedidosNilas", data.extras.pedidos_nilas || 0);
+  setCuadreNumberValue("#cuadreCortesias", data.extras.cortesias || 0);
+
+  renderCuadreVentasRows(ventasRowsFromPayload(data));
+  renderCuadreDetailRows(data.detalle || []);
+  updateCuadreTotals();
+}
+
+function updateCuadreTotals() {
+  let efectivoDenoms = 0;
+  const monedas = getCuadreMonedasFromDom();
+  normalizeCuadreDenoms(Object.keys(monedas).map((k) => cuadreParseNum(k))).forEach((d) => {
+    const qty = Math.max(0, cuadreParseNum(monedas[String(d)] || 0));
+    const line = qty * Number(d);
+    efectivoDenoms += line;
+    const label = document.querySelector(`[data-cuadre-line-total="${cuadreFormatDenomLabel(d)}"]`);
+    if (label) label.textContent = fmtMoney(line);
+  });
+
+  const dolaresCantidad = Math.max(0, cuadreParseNum(getCuadreDollarQtyFromDom() || 0));
+  const totalDolares = dolaresCantidad * CUADRE_DOLAR_DENOM_USD;
+  const totalDolaresQuetzales = totalDolares * CUADRE_DOLAR_TIPO_CAMBIO;
+  const visa = Math.max(0, cuadreParseNum($("#cuadreVisa")?.value || 0));
+  const bancos = Math.max(0, cuadreParseNum($("#cuadreBancos")?.value || 0));
+  const cxcTrab = Math.max(0, cuadreParseNum($("#cuadreCxcTrabajadores")?.value || 0));
+  const cxcHab = Math.max(0, cuadreParseNum($("#cuadreCxcHabitaciones")?.value || 0));
+  const paseConsumible = Math.max(0, cuadreParseNum($("#cuadrePaseConsumible")?.value || 0));
+
+  const ventasRows = collectCuadreVentasRowsFromDom();
+  const totalVentaAmbiente = ventasRows.reduce((acc, row) => acc + Number(row.monto || 0), 0);
+
+  const pedidosNilas = Math.max(0, cuadreParseNum($("#cuadrePedidosNilas")?.value || 0));
+  const cortesias = Math.max(0, cuadreParseNum($("#cuadreCortesias")?.value || 0));
+
+  const totalEfectivo = efectivoDenoms + totalDolaresQuetzales;
+  const totalCobro = totalEfectivo + visa + bancos + cxcTrab + cxcHab + paseConsumible;
+  const granTotal = totalVentaAmbiente + pedidosNilas + cortesias;
+
+  const dollarLine = document.querySelector("[data-cuadre-dollar-total]");
+  if (dollarLine) dollarLine.textContent = `$${fmtMoney(totalDolares)}`;
+  if ($("#cuadreTotalEfectivo")) $("#cuadreTotalEfectivo").textContent = fmtMoney(totalEfectivo);
+  if ($("#cuadreTotalCobro")) $("#cuadreTotalCobro").textContent = fmtMoney(totalCobro);
+  if ($("#cuadreTotalVentaAmbiente")) $("#cuadreTotalVentaAmbiente").textContent = fmtMoney(totalVentaAmbiente);
+  if ($("#cuadreGranTotal")) $("#cuadreGranTotal").textContent = fmtMoney(granTotal);
+
+  const snapshot = {
+    monedas,
+    total_dolares: totalDolares,
+    total_dolares_quetzales: totalDolaresQuetzales,
+    total_efectivo: totalEfectivo,
+    total_cobro: totalCobro,
+    total_venta_ambiente: totalVentaAmbiente,
+    pedidos_nilas: pedidosNilas,
+    cortesias,
+    gran_total_reporte: granTotal,
+  };
+  renderCuadreTicketPreview(snapshot);
+  saveCuadreDraftLocal();
+  return snapshot;
 }
 
 async function loadCuadreWarehouseFilter(force = false) {
@@ -12467,6 +13399,11 @@ async function loadCuadreWarehouseFilter(force = false) {
       sel.value = String(j.id_bodega_default);
     } else if (rows[0]?.id_bodega) {
       sel.value = String(rows[0].id_bodega);
+    }
+
+    const draft = loadCuadreDraftLocal();
+    if (draft?.id_bodega && Array.from(sel.options).some((opt) => Number(opt.value || 0) === Number(draft.id_bodega || 0))) {
+      sel.value = String(draft.id_bodega);
     }
 
     cuadreWarehouseLoaded = true;
@@ -12500,6 +13437,7 @@ async function loadCuadreCaja() {
     if ($("#cuadreMeta")) {
       $("#cuadreMeta").textContent = `${j.bodega || "Bodega"} | Fecha ${fmtDateOnly(j.fecha)}${when}`;
     }
+    saveCuadreDraftLocal();
   } catch {
     if ($("#cuadreMeta")) $("#cuadreMeta").textContent = "Error de red";
   }
@@ -12563,6 +13501,7 @@ function clearCuadreCajaForm() {
     const selectedTxt = $("#cuadreWarehouse")?.selectedOptions?.[0]?.textContent || "";
     $("#cuadreSede").value = String(selectedTxt || "").trim();
   }
+  clearCuadreDraftLocal();
   if ($("#cuadreMeta")) $("#cuadreMeta").textContent = "Formulario limpio";
 }
 
@@ -12570,13 +13509,46 @@ function openCuadrePrint(format = "carta") {
   const fecha = $("#cuadreFecha")?.value || cuadreTodayYmd();
   const idBodega = Number($("#cuadreWarehouse")?.value || 0);
   const fmt = String(format || "carta").toLowerCase() === "pos" ? "pos" : "carta";
-  const qs = new URLSearchParams({
-    token: token || "",
+  const targetName = `cuadrePrint_${Date.now()}`;
+  const popup = window.open("", targetName);
+  if (!popup) {
+    showEntToast("El navegador bloqueo la ventana de impresion.", "bad");
+    return;
+  }
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.target = targetName;
+  form.action = `${API_ORIGIN}/api/print/cuadre-caja?token=${encodeURIComponent(token || "")}`;
+  form.style.display = "none";
+
+  const fields = {
     fecha,
     format: fmt,
+    warehouse: idBodega > 0 ? String(idBodega) : "",
+    payload_override: JSON.stringify(buildCuadrePayloadFromUI()),
+  };
+  Object.entries(fields).forEach(([name, value]) => {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = String(value || "");
+    form.appendChild(input);
   });
-  if (idBodega > 0) qs.set("warehouse", String(idBodega));
-  window.open(`${API_ORIGIN}/api/print/cuadre-caja?${qs.toString()}`, "_blank");
+
+  document.body.appendChild(form);
+  form.submit();
+  setTimeout(() => form.remove(), 1000);
+}
+
+function initCuadreCajaDraft() {
+  if (!$("#view-cuadre-caja")) return;
+  const draft = loadCuadreDraftLocal();
+  const base = buildCuadreDefaultPayload();
+  renderCuadreCashRows(base.monedas, base.pagos.dolares_cantidad || 0);
+  renderCuadreVentasRows(base.ventas_rows);
+  renderCuadreDetailRows([]);
+  if ($("#cuadreFecha") && !$("#cuadreFecha").value) setDateInputValue($("#cuadreFecha"), draft?.fecha || cuadreTodayYmd());
+  applyCuadrePayload(draft?.payload || base);
 }
 
 if ($("#cuadreSearch")) {
@@ -12596,26 +13568,67 @@ if ($("#cuadreSave")) {
 }
 if ($("#cuadreFecha")) {
   if (!$("#cuadreFecha").value) setDateInputValue($("#cuadreFecha"), cuadreTodayYmd());
-  $("#cuadreFecha").addEventListener("change", () => loadCuadreCaja());
+  $("#cuadreFecha").addEventListener("change", () => {
+    saveCuadreDraftLocal();
+    loadCuadreCaja();
+  });
 }
 if ($("#cuadreWarehouse")) {
-  $("#cuadreWarehouse").onchange = () => loadCuadreCaja();
+  $("#cuadreWarehouse").onchange = () => {
+    saveCuadreDraftLocal();
+    loadCuadreCaja();
+  };
 }
 if ($("#cuadreCashRows")) {
   $("#cuadreCashRows").addEventListener("input", () => updateCuadreTotals());
+  $("#cuadreCashRows").addEventListener("click", (e) => {
+    const btn = e.target?.closest?.("[data-cuadre-denom-remove]");
+    if (!btn) return;
+    const target = Number(cuadreParseNum(btn.dataset.cuadreDenomRemove || 0).toFixed(2));
+    if (target <= 0) return;
+    const monedas = getCuadreMonedasFromDom();
+    delete monedas[String(target)];
+    renderCuadreCashRows(monedas);
+    updateCuadreTotals();
+  });
 }
 [
-  "#cuadreMonedasSueltas", "#cuadreDolares", "#cuadreVisa", "#cuadreBancos", "#cuadreCxcTrabajadores", "#cuadreCxcHabitaciones", "#cuadreDay",
-  "#cuadrePedidosNilas", "#cuadreCortesias"
+  "#cuadreVisa", "#cuadreBancos", "#cuadreCxcTrabajadores", "#cuadreCxcHabitaciones", "#cuadrePaseConsumible",
+  "#cuadrePedidosNilas", "#cuadreCortesias", "#cuadreSede"
 ].forEach((id) => {
   const el = $(id);
   if (el) el.addEventListener("input", () => updateCuadreTotals());
 });
+if ($("#cuadreAddDenom")) {
+  $("#cuadreAddDenom").onclick = () => {
+    const input = $("#cuadreNewDenom");
+    const denom = Number(cuadreParseNum(input?.value || 0).toFixed(2));
+    if (!denom || denom <= 0) {
+      showEntToast("Ingresa una denominacion valida.", "bad");
+      markError(input);
+      return;
+    }
+    const monedas = getCuadreMonedasFromDom();
+    monedas[String(denom)] = monedas[String(denom)] || 0;
+    renderCuadreCashRows(monedas);
+    if (input) input.value = "";
+    updateCuadreTotals();
+  };
+}
+if ($("#cuadreNewDenom")) {
+  $("#cuadreNewDenom").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      $("#cuadreAddDenom")?.click();
+    }
+  });
+}
 if ($("#cuadreAddVentaRow")) {
   $("#cuadreAddVentaRow").onclick = () => {
     const rows = collectCuadreVentasRowsFromDom();
     rows.push({ ambiente: "", monto: 0 });
     renderCuadreVentasRows(rows);
+    updateCuadreTotals();
   };
 }
 if ($("#cuadreVentasList")) {
@@ -12636,9 +13649,11 @@ if ($("#cuadreAddDetailRow")) {
     const rows = collectCuadreDetailRowsFromDom();
     rows.push({ descripcion: "", nombre: "", monto: 0, check_no: "" });
     renderCuadreDetailRows(rows);
+    saveCuadreDraftLocal();
   };
 }
 if ($("#cuadreDetailList")) {
+  $("#cuadreDetailList").addEventListener("input", () => saveCuadreDraftLocal());
   $("#cuadreDetailList").addEventListener("click", (e) => {
     const btn = e.target?.closest?.("[data-cuadre-detail-remove]");
     if (!btn) return;
@@ -12647,8 +13662,16 @@ if ($("#cuadreDetailList")) {
     const rows = collectCuadreDetailRowsFromDom();
     rows.splice(idx, 1);
     renderCuadreDetailRows(rows);
+    saveCuadreDraftLocal();
   });
 }
+initCuadreCajaDraft();
+
+
+
+
+
+
 
 
 
