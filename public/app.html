@@ -1005,7 +1005,7 @@
 <div class="grid4">
   <div><label class="lbl">Categoria</label><select class="in" id="prdCategoria"></select></div>
   <div><label class="lbl">Subcategoria</label><select class="in" id="prdSubcategoria"></select></div>
-  <div style="grid-column: span 2;"><label class="lbl">Bodegas visibles (activar/desactivar por bodega)</label><div class="warehouseCheckList" id="prdVisibleWarehouses"></div></div>
+  <div style="grid-column: span 2;"><label class="lbl">Bodegas visibles (activar/desactivar por bodega)</label><div class="warehouseCheckList" id="prdVisibleWarehouses"></div><label class="warehouseCheckItem" id="prdMyWarehouseToggleWrap"><input type="checkbox" id="prdVisibleInMyWarehouse" checked /><span>Habilitado en mi bodega</span></label><div class="note" id="prdMyWarehouseHint">Puedes habilitar o inhabilitar el producto en tu bodega desde la lista.</div></div>
 </div>
 
 <div class="grid4 importGrid">
@@ -1034,10 +1034,10 @@
 <table class="tbl grid">
 <thead>
 <tr>
-<th>ID</th><th>Producto</th><th>SKU</th><th>Medida</th><th>Categoria</th><th>Subcategoria</th><th>Bodegas visibles</th><th>Estado</th><th>Accion</th>
+<th>ID</th><th>Producto</th><th>SKU</th><th>Medida</th><th>Categoria</th><th>Subcategoria</th><th>Bodegas visibles</th><th>Mi bodega</th><th>Estado</th><th>Accion</th>
 </tr>
 </thead>
-<tbody id="prdManageList"><tr><td colspan="9">Escribe un producto para buscar.</td></tr></tbody>
+<tbody id="prdManageList"><tr><td colspan="10">Escribe un producto para buscar.</td></tr></tbody>
 </table>
 </div>
 
@@ -2174,3 +2174,5 @@
 </script>
 </body>
 </html>
+
+

@@ -9926,10 +9926,59 @@ function productWarehouseSummaryLabel(productRow) {
   return `<span class="pill ghost" title="${escapeHtml(tooltip)}">${total} bodegas</span>`;
 }
 
+function productWarehouseOwnStatusTag(productRow) {
+  return Number(productRow?.visible_en_bodega_usuario)
+    ? `<span class="badgeTag ok">Habilitado</span>`
+    : `<span class="badgeTag warn">Inhabilitado</span>`;
+}
+
+function getMyProductWarehouseName() {
+  const idWarehouse = Number(me?.id_warehouse || 0);
+  if (!idWarehouse) return "tu bodega";
+  const found = prdVisibleWarehousesCatalog.find((b) => Number(b.id_bodega || 0) === idWarehouse);
+  return found?.nombre_bodega || `Bodega #${idWarehouse}`;
+}
+
+function syncMyProductWarehouseUI() {
+  const check = $("#prdVisibleInMyWarehouse");
+  const wrap = $("#prdMyWarehouseToggleWrap");
+  const hint = $("#prdMyWarehouseHint");
+  const idWarehouse = Number(me?.id_warehouse || 0);
+  if (!check || !wrap || !hint) return;
+  if (!idWarehouse) {
+    check.checked = true;
+    check.disabled = true;
+    wrap.style.display = "none";
+    hint.textContent = "La visibilidad por mi bodega requiere que el usuario tenga una bodega asignada.";
+    return;
+  }
+  check.disabled = false;
+  wrap.style.display = "";
+  if (!check.dataset.userTouched) check.checked = true;
+  hint.textContent = `Tu bodega actual es ${getMyProductWarehouseName()}. Tambien puedes cambiar este estado luego desde la lista.`;
+}
+
+async function toggleProductVisibilityInMyWarehouse(idProducto, visible) {
+  const id_producto = Number(idProducto || 0);
+  if (!id_producto) return { ok: false, error: "Producto invalido" };
+  const r = await fetch(`/api/productos/${id_producto}/visibilidad-mi-bodega`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + token,
+    },
+    body: JSON.stringify({ visible: visible ? 1 : 0 }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) return { ok: false, error: j.error || "No se pudo actualizar la visibilidad." };
+  return { ok: true, data: j };
+}
+
 async function loadProductoWarehouseOptions(force = false) {
   if (prdVisibleWarehousesCatalog.length && !force) {
     renderProductWarehouseChecklist("#prdVisibleWarehouses");
     renderProductWarehouseChecklist("#prdEditVisibleWarehouses");
+    syncMyProductWarehouseUI();
     return;
   }
   try {
@@ -9941,6 +9990,7 @@ async function loadProductoWarehouseOptions(force = false) {
     prdVisibleWarehousesCatalog = Array.isArray(rows) ? rows : [];
     renderProductWarehouseChecklist("#prdVisibleWarehouses");
     renderProductWarehouseChecklist("#prdEditVisibleWarehouses");
+    syncMyProductWarehouseUI();
   } catch {}
 }
 
@@ -9972,10 +10022,10 @@ async function loadProductosManage() {
   const q = ($("#prdSearch")?.value || "").trim();
   const isSearch = q.length > 0;
   if (!isSearch) {
-    tb.innerHTML = `<tr><td colspan="9">Escribe un producto para buscar.</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="10">Escribe un producto para buscar.</td></tr>`;
     return;
   }
-  tb.innerHTML = `<tr><td colspan="9">Buscando...</td></tr>`;
+  tb.innerHTML = `<tr><td colspan="10">Buscando...</td></tr>`;
   try {
     const qs = new URLSearchParams({ all: "1", q, limit: "5" });
     const r = await fetch(`/api/productos?${qs.toString()}`, {
@@ -9983,13 +10033,14 @@ async function loadProductosManage() {
     });
     const rows = await r.json().catch(() => []);
     if (!r.ok) {
-      tb.innerHTML = `<tr><td colspan="9">Error al cargar productos</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="10">Error al cargar productos</td></tr>`;
       return;
     }
     if (!rows.length) {
-      tb.innerHTML = `<tr><td colspan="9">Sin productos</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="10">Sin productos</td></tr>`;
       return;
     }
+    const canToggleMine = Number(me?.id_warehouse || 0) > 0;
     tb.innerHTML = rows
       .map(
         (p) => `
@@ -10001,9 +10052,13 @@ async function loadProductosManage() {
           <td>${p.nombre_categoria || "-"}</td>
           <td>${p.nombre_subcategoria || "-"}</td>
           <td>${productWarehouseSummaryLabel(p)}</td>
+          <td>${canToggleMine ? productWarehouseOwnStatusTag(p) : `<span class="note">Sin bodega</span>`}</td>
           <td>${productoEstadoTag(p.activo)}</td>
           <td>
-            <button class="iconBtn edit" data-pedit="${p.id_producto}" title="Editar">E</button>
+            <div class="gridActions">
+              ${canToggleMine ? `<button class="iconBtn ${Number(p.visible_en_bodega_usuario) ? "del" : "ok"}" data-ptoggle="${p.id_producto}" data-next-visible="${Number(p.visible_en_bodega_usuario) ? 0 : 1}" title="${Number(p.visible_en_bodega_usuario) ? "Inhabilitar en mi bodega" : "Habilitar en mi bodega"}">${Number(p.visible_en_bodega_usuario) ? "X" : "H"}</button>` : ""}
+              <button class="iconBtn edit" data-pedit="${p.id_producto}" title="Editar">E</button>
+            </div>
           </td>
         </tr>
       `
@@ -10026,8 +10081,25 @@ async function loadProductosManage() {
         openAdminCollapseSection('view-productos', 'Editar producto');
       };
     });
+
+    tb.querySelectorAll("[data-ptoggle]").forEach((btn) => {
+      btn.onclick = async () => {
+        const id = Number(btn.dataset.ptoggle || 0);
+        const nextVisible = Number(btn.dataset.nextVisible || 0) === 1;
+        if (!id) return;
+        const actionLabel = nextVisible ? "habilitar" : "inhabilitar";
+        if (!(await uiConfirm(`Deseas ${actionLabel} este producto en ${getMyProductWarehouseName()}?`, `${nextVisible ? "Habilitar" : "Inhabilitar"} producto`))) return;
+        const result = await toggleProductVisibilityInMyWarehouse(id, nextVisible);
+        if (!result.ok) {
+          showEntToast(result.error || "No se pudo actualizar la visibilidad.", "bad");
+          return;
+        }
+        showEntToast(`Producto ${nextVisible ? "habilitado" : "inhabilitado"} en ${getMyProductWarehouseName()}.`, "ok");
+        loadProductosManage();
+      };
+    });
   } catch {
-    tb.innerHTML = `<tr><td colspan="9">Error de red</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="10">Error de red</td></tr>`;
   }
 }
 
@@ -10035,6 +10107,12 @@ if ($("#prdCategoria")) {
   $("#prdCategoria").addEventListener("change", () => {
     const idCategoria = Number($("#prdCategoria")?.value || 0);
     loadSubcategoriasProducto(idCategoria, "#prdSubcategoria");
+  });
+}
+
+if ($("#prdVisibleInMyWarehouse")) {
+  $("#prdVisibleInMyWarehouse").addEventListener("change", () => {
+    $("#prdVisibleInMyWarehouse").dataset.userTouched = "1";
   });
 }
 
@@ -10054,6 +10132,7 @@ if ($("#prdSave")) {
     const id_subcategoria = Number($("#prdSubcategoria")?.value || 0) || null;
     const activo = Number($("#prdActivo")?.value || 1);
     const id_bodegas_visibles = getSelectedProductWarehouseIds("#prdVisibleWarehouses");
+    const visibleInMyWarehouse = $("#prdVisibleInMyWarehouse") ? $("#prdVisibleInMyWarehouse").checked : true;
 
     if (!nombre_producto) {
       showEntToast("El nombre del producto es obligatorio.", "bad");
@@ -10093,6 +10172,12 @@ if ($("#prdSave")) {
         showEntToast(j.error || "Error guardando producto.", "bad");
         return;
       }
+      if (!visibleInMyWarehouse && Number(me?.id_warehouse || 0) > 0) {
+        const toggleResult = await toggleProductVisibilityInMyWarehouse(j.id_producto, false);
+        if (!toggleResult.ok) {
+          showEntToast(toggleResult.error || "El producto se creo, pero no se pudo inhabilitar en tu bodega.", "bad");
+        }
+      }
       showEntToast(`Producto creado #${j.id_producto}`, "ok");
       $("#prdNombre").value = "";
       $("#prdSku").value = "";
@@ -10101,6 +10186,11 @@ if ($("#prdSave")) {
       $("#prdSubcategoria").innerHTML = `<option value="">Seleccione subcategoria</option>`;
       $("#prdActivo").value = "1";
       renderProductWarehouseChecklist("#prdVisibleWarehouses", []);
+      if ($("#prdVisibleInMyWarehouse")) {
+        $("#prdVisibleInMyWarehouse").checked = true;
+        delete $("#prdVisibleInMyWarehouse").dataset.userTouched;
+      }
+      syncMyProductWarehouseUI();
       loadProductosManage();
     } catch {
       showEntToast("Error de red.", "bad");
@@ -13666,6 +13756,7 @@ if ($("#cuadreDetailList")) {
   });
 }
 initCuadreCajaDraft();
+
 
 
 

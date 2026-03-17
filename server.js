@@ -530,6 +530,7 @@ async function ensureProductWarehouseVisibilityTable() {
     `CREATE TABLE IF NOT EXISTS producto_bodegas_visibilidad (
       id_producto INT NOT NULL,
       id_bodega INT NOT NULL,
+      visible TINYINT(1) NOT NULL DEFAULT 1,
       actualizado_en TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (id_producto, id_bodega),
       KEY idx_pbv_bodega (id_bodega),
@@ -537,6 +538,20 @@ async function ensureProductWarehouseVisibilityTable() {
       CONSTRAINT fk_pbv_bodega FOREIGN KEY (id_bodega) REFERENCES bodegas(id_bodega) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
   );
+  const [rows] = await pool.query(
+    `SELECT 1
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME='producto_bodegas_visibilidad'
+       AND COLUMN_NAME='visible'
+     LIMIT 1`
+  );
+  if (!rows.length) {
+    await pool.query(
+      `ALTER TABLE producto_bodegas_visibilidad
+       ADD COLUMN visible TINYINT(1) NOT NULL DEFAULT 1 AFTER id_bodega`
+    );
+  }
 }
 
 function normalizeWarehouseIdList(values) {
@@ -574,6 +589,7 @@ function buildProductWarehouseVisibilityClause(productExpr, warehouseParamName) 
       FROM producto_bodegas_visibilidad pbv_allow
       WHERE pbv_allow.id_producto=${productExpr}
         AND pbv_allow.id_bodega=:${warehouseParamName}
+        AND pbv_allow.visible=1
     )
   )`;
 }
@@ -601,6 +617,7 @@ async function getProductVisibleWarehouseIds(idProducto) {
     `SELECT id_bodega
      FROM producto_bodegas_visibilidad
      WHERE id_producto=:id_producto
+       AND visible=1
      ORDER BY id_bodega ASC`,
     { id_producto }
   );
@@ -619,8 +636,8 @@ async function saveProductVisibleWarehouseIds(conn, idProducto, ids) {
   );
   for (const id_bodega of visibleIds) {
     await conn.query(
-      `INSERT INTO producto_bodegas_visibilidad (id_producto, id_bodega)
-       VALUES (:id_producto, :id_bodega)`,
+      `INSERT INTO producto_bodegas_visibilidad (id_producto, id_bodega, visible)
+       VALUES (:id_producto, :id_bodega, 1)`,
       { id_producto, id_bodega }
     );
   }
@@ -642,12 +659,113 @@ async function isProductVisibleInWarehouse(conn, idProducto, idBodega) {
         FROM producto_bodegas_visibilidad pbv
         WHERE pbv.id_producto=:id_producto
           AND pbv.id_bodega=:id_bodega
+          AND pbv.visible=1
       ) AS allowed`,
     { id_producto, id_bodega }
   );
   const restricted = Number(row?.restricted || 0) === 1;
   const allowed = Number(row?.allowed || 0) === 1;
   return !restricted || allowed;
+}
+
+async function getActiveWarehouseIds(conn) {
+  const [rows] = await conn.query(
+    `SELECT id_bodega
+     FROM bodegas
+     WHERE activo=1
+     ORDER BY id_bodega ASC`
+  );
+  return normalizeWarehouseIdList((rows || []).map((r) => r.id_bodega));
+}
+
+async function setProductWarehouseVisibility(conn, idProducto, idBodega, visible) {
+  await ensureProductWarehouseVisibilityTable();
+  const id_producto = Number(idProducto || 0);
+  const id_bodega = Number(idBodega || 0);
+  const nextVisible = Number(visible) ? 1 : 0;
+  if (!id_producto || !id_bodega) {
+    throw new Error("Producto o bodega invalida");
+  }
+
+  const [[productRow]] = await conn.query(
+    `SELECT id_producto
+     FROM productos
+     WHERE id_producto=:id_producto
+     LIMIT 1`,
+    { id_producto }
+  );
+  if (!productRow) {
+    const err = new Error("Producto no existe");
+    err.status = 404;
+    throw err;
+  }
+
+  const [[warehouseRow]] = await conn.query(
+    `SELECT id_bodega
+     FROM bodegas
+     WHERE id_bodega=:id_bodega
+       AND activo=1
+     LIMIT 1`,
+    { id_bodega }
+  );
+  if (!warehouseRow) {
+    const err = new Error("Bodega no existe o esta inactiva");
+    err.status = 400;
+    throw err;
+  }
+
+  const [currentRows] = await conn.query(
+    `SELECT id_bodega, visible
+     FROM producto_bodegas_visibilidad
+     WHERE id_producto=:id_producto`,
+    { id_producto }
+  );
+
+  if (!currentRows.length) {
+    if (nextVisible) return;
+    const activeWarehouseIds = await getActiveWarehouseIds(conn);
+    for (const wid of activeWarehouseIds) {
+      await conn.query(
+        `INSERT INTO producto_bodegas_visibilidad (id_producto, id_bodega, visible)
+         VALUES (:id_producto, :id_bodega, :visible)`,
+        {
+          id_producto,
+          id_bodega: wid,
+          visible: wid === id_bodega ? 0 : 1,
+        }
+      );
+    }
+    return;
+  }
+
+  await conn.query(
+    `INSERT INTO producto_bodegas_visibilidad (id_producto, id_bodega, visible)
+     VALUES (:id_producto, :id_bodega, :visible)
+     ON DUPLICATE KEY UPDATE visible=VALUES(visible), actualizado_en=CURRENT_TIMESTAMP`,
+    { id_producto, id_bodega, visible: nextVisible }
+  );
+
+  const activeWarehouseIds = await getActiveWarehouseIds(conn);
+  const [visibleRows] = await conn.query(
+    `SELECT id_bodega
+     FROM producto_bodegas_visibilidad
+     WHERE id_producto=:id_producto
+       AND visible=1
+     ORDER BY id_bodega ASC`,
+    { id_producto }
+  );
+  const visibleIds = normalizeWarehouseIdList((visibleRows || []).map((r) => r.id_bodega));
+  if (
+    activeWarehouseIds.length &&
+    visibleIds.length === activeWarehouseIds.length &&
+    visibleIds.every((id, idx) => id === activeWarehouseIds[idx])
+  ) {
+    await conn.query(
+      `DELETE FROM producto_bodegas_visibilidad
+       WHERE id_producto=:id_producto`,
+      { id_producto }
+    );
+  }
 }
 
 function buildNamedInClause(values, prefix) {
@@ -2543,6 +2661,7 @@ app.get("/api/productos", auth, async (req, res) => {
   const qf = buildTokenizedLikeFilter(qRaw, ["p.nombre_producto", "p.sku"], "pq");
   const defaultLimit = qRaw ? 5 : 200;
   const limit = Math.max(1, Math.min(5000, Number(req.query.limit || defaultLimit)));
+  const id_bodega_usuario = Number(req.user?.id_warehouse || 0) || null;
   const [rows] = await pool.query(
     `SELECT p.id_producto,
             p.nombre_producto,
@@ -2555,7 +2674,23 @@ app.get("/api/productos", auth, async (req, res) => {
             c.nombre_categoria,
             s.nombre_subcategoria,
             COALESCE(pwv.total_bodegas_visibles, 0) AS total_bodegas_visibles,
-            COALESCE(pwv.nombres_bodegas_visibles, '') AS nombres_bodegas_visibles
+            COALESCE(pwv.nombres_bodegas_visibles, '') AS nombres_bodegas_visibles,
+            CASE
+              WHEN :id_bodega_usuario IS NULL THEN 1
+              WHEN NOT EXISTS (
+                SELECT 1
+                FROM producto_bodegas_visibilidad pbv_all
+                WHERE pbv_all.id_producto=p.id_producto
+              ) THEN 1
+              WHEN EXISTS (
+                SELECT 1
+                FROM producto_bodegas_visibilidad pbv_me
+                WHERE pbv_me.id_producto=p.id_producto
+                  AND pbv_me.id_bodega=:id_bodega_usuario
+                  AND pbv_me.visible=1
+              ) THEN 1
+              ELSE 0
+            END AS visible_en_bodega_usuario
      FROM productos p
      JOIN medidas m ON m.id_medida=p.id_medida
      JOIN categorias c ON c.id_categoria=p.id_categoria
@@ -2566,13 +2701,14 @@ app.get("/api/productos", auth, async (req, res) => {
               GROUP_CONCAT(b.nombre_bodega ORDER BY b.nombre_bodega ASC SEPARATOR ', ') AS nombres_bodegas_visibles
        FROM producto_bodegas_visibilidad pbv
        JOIN bodegas b ON b.id_bodega=pbv.id_bodega
+       WHERE pbv.visible=1
        GROUP BY pbv.id_producto
      ) pwv ON pwv.id_producto=p.id_producto
      WHERE (:all=1 OR p.activo=1)
        AND ${qf.clause}
      ORDER BY p.nombre_producto ASC
      LIMIT ${limit}`,
-    { all: all ? 1 : 0, ...qf.params }
+    { all: all ? 1 : 0, id_bodega_usuario, ...qf.params }
   );
   res.json(rows);
 });
@@ -2700,6 +2836,7 @@ app.get("/api/productos/:id/bodegas-visibles", auth, async (req, res) => {
        FROM producto_bodegas_visibilidad pbv
        JOIN bodegas b ON b.id_bodega=pbv.id_bodega
        WHERE pbv.id_producto=:id_producto
+         AND pbv.visible=1
        ORDER BY b.nombre_bodega ASC, pbv.id_bodega ASC`,
       { id_producto }
     );
@@ -2710,6 +2847,30 @@ app.get("/api/productos/:id/bodegas-visibles", auth, async (req, res) => {
     });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+app.post("/api/productos/:id/visibilidad-mi-bodega", auth, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const id_producto = Number(req.params.id || 0);
+    const id_bodega = Number(req.user?.id_warehouse || 0);
+    const visible = Number(req.body?.visible) ? 1 : 0;
+    if (!id_producto) return res.status(400).json({ error: "Falta producto" });
+    if (!id_bodega) return res.status(400).json({ error: "Usuario sin bodega asignada" });
+
+    await conn.beginTransaction();
+    await setProductWarehouseVisibility(conn, id_producto, id_bodega, visible);
+    await conn.commit();
+    const visibleEnBodega = await isProductVisibleInWarehouse(pool, id_producto, id_bodega);
+    res.json({ ok: true, id_producto, id_bodega, visible: visibleEnBodega ? 1 : 0 });
+  } catch (e) {
+    try {
+      await conn.rollback();
+    } catch {}
+    res.status(Number(e?.status || 500)).json({ error: String(e.message || e) });
+  } finally {
+    conn.release();
   }
 });
 
@@ -8470,6 +8631,11 @@ httpServer.listen(PORT, HOST, () => {
     console.log("Dashboard prewarm deshabilitado por DASHBOARD_PREWARM=0");
   }
 });
+
+
+
+
+
 
 
 
