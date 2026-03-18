@@ -125,6 +125,12 @@
 <div class="v" id="homeCardRotar">0</div>
 <div class="s">Click para ver detalle</div>
 </button>
+<button class="homeDashCard stock" type="button" data-kind="stock_minimo">
+<div class="k">Control de stock minimo</div>
+<div class="v" id="homeCardBajoMinimo">0</div>
+<div class="s">Bajo minimo</div>
+<div class="s" id="homeCardEntreMinimoIdeal">Entre minimo e ideal: 0</div>
+</button>
 <button class="homeDashCard money" type="button" data-kind="vigentes">
 <div class="k">Total dinero en bodega</div>
 <div class="v" id="homeCardDinero">0.00</div>
@@ -1856,21 +1862,91 @@
 </button>
 </div>
 </div>
-<div class="statusGroup" style="margin:10px 0 0;">
-<span class="pill ghost" id="repHeadBodega">
-</span>
-<span class="pill ghost" id="repHeadProducto">
-</span>
-<span class="pill ghost" id="repHeadSku">
-</span>
-<span class="pill ghost" id="repHeadStock">
-</span>
-<span class="pill ghost" id="repHeadEstado">
-</span>
-<span class="pill ghost" id="repHeadNivel">
-</span>
-<span class="pill ghost" id="repHeadRegla">
-</span>
+<div class="repExistPanel">
+<div class="repExistPanelHead">
+<div class="repExistPanelTitle">Filtros rapidos de existencias</div>
+<div class="repExistPanelSub">Ajusta filtros por texto, stock y estado operativo. Se aplican en tiempo real sobre la tabla.</div>
+</div>
+<div class="repHeadFilters">
+<label class="repFilterCard">
+<span class="repFilterLabel">Bodega</span>
+<input class="repHeadInput" id="repHeadBodega" placeholder="Escribe bodega..." />
+</label>
+<label class="repFilterCard">
+<span class="repFilterLabel">Producto</span>
+<input class="repHeadInput" id="repHeadProducto" placeholder="Escribe producto..." />
+</label>
+<label class="repFilterCard">
+<span class="repFilterLabel">Stock minimo</span>
+<input class="repHeadInput" id="repHeadStock" type="number" min="0" step="1" placeholder="0" />
+</label>
+<div class="repFilterCard">
+<span class="repFilterLabel">Estado fecha vencimiento</span>
+<details class="multiSelect" data-target="#repHeadEstado" data-placeholder="Todos">
+<summary class="multiSelectSummary">Todos</summary>
+<div class="multiSelectMenu">
+<label><input type="checkbox" value="Retirar" /> Retirar</label>
+<label><input type="checkbox" value="Mover ya" /> Mover ya</label>
+<label><input type="checkbox" value="Monitorear" /> Monitorear</label>
+<label><input type="checkbox" value="Revisar lote" /> Revisar lote</label>
+<div class="multiSelectActions">
+<button type="button" class="btn soft btn-sm" data-ms-clear>Limpiar</button>
+<button type="button" class="btn soft btn-sm" data-ms-all>Todos</button>
+</div>
+</div>
+</details>
+<input id="repHeadEstado" type="hidden" />
+</div>
+<div class="repFilterCard">
+<span class="repFilterLabel">Nivel</span>
+<details class="multiSelect" data-target="#repHeadNivel" data-placeholder="Todos">
+<summary class="multiSelectSummary">Todos</summary>
+<div class="multiSelectMenu">
+<label><input type="checkbox" value="Bajo Minimo" /> Bajo Minimo</label>
+<label><input type="checkbox" value="Bajo entre minimo e ideal" /> Bajo entre minimo e ideal</label>
+<label><input type="checkbox" value="Ideal" /> Ideal</label>
+<label><input type="checkbox" value="Sobre maximo" /> Sobre maximo</label>
+<label><input type="checkbox" value="Sin limites" /> Sin limites</label>
+<div class="multiSelectActions">
+<button type="button" class="btn soft btn-sm" data-ms-clear>Limpiar</button>
+<button type="button" class="btn soft btn-sm" data-ms-all>Todos</button>
+</div>
+</div>
+</details>
+<input id="repHeadNivel" type="hidden" />
+</div>
+<div class="repFilterCard">
+<span class="repFilterLabel">Regla rotacion subcategoria</span>
+<details class="multiSelect" data-target="#repHeadRegla" data-placeholder="Todas">
+<summary class="multiSelectSummary">Todas</summary>
+<div class="multiSelectMenu">
+<label><input type="checkbox" value="Excedido" /> Excedido</label>
+<label><input type="checkbox" value="Mover por regla" /> Mover por regla</label>
+<label><input type="checkbox" value="Vigente por regla" /> Vigente por regla</label>
+<label><input type="checkbox" value="Sin regla" /> Sin regla</label>
+<div class="multiSelectActions">
+<button type="button" class="btn soft btn-sm" data-ms-clear>Limpiar</button>
+<button type="button" class="btn soft btn-sm" data-ms-all>Todos</button>
+</div>
+</div>
+</details>
+<input id="repHeadRegla" type="hidden" />
+</div>
+</div>
+<div class="repExistLegendCards"> 
+<div class="repLegendCard estado">
+<div class="repLegendTitle">Estado fecha vencimiento</div>
+<div class="repLegendText">Retirar (&lt;0 dias), Mover ya (<= dias mover), Monitorear (&gt; dias mover), Revisar lote (sin fecha).</div>
+</div>
+<div class="repLegendCard nivel">
+<div class="repLegendTitle">Nivel</div>
+<div class="repLegendText">Bajo Minimo (&lt; minimo), Bajo entre minimo e ideal (>= minimo y &lt; maximo, o sin maximo), Ideal (maximo a maximo*1.2), Sobre maximo (&gt; maximo*1.1), Sin limites.</div>
+</div>
+<div class="repLegendCard regla">
+<div class="repLegendTitle">Regla rotacion subcategoria</div>
+<div class="repLegendText">Excedido (&lt;0), Mover por regla (<= alerta), Vigente por regla (&gt; alerta), Sin regla (no aplica).</div>
+</div>
+</div>
 </div>
 <div id="repExistResume">
 </div>
@@ -1884,8 +1960,8 @@
 <th>Stock</th>
 <th>Nivel</th>
 <th>Total dinero</th>
-<th>Estado</th>
-<th>Regla</th>
+<th>Estado fecha vencimiento</th>
+<th>Regla rotacion</th>
 <th>Lotes</th>
 </tr>
 </thead>
@@ -2174,5 +2250,4 @@
 </script>
 </body>
 </html>
-
 

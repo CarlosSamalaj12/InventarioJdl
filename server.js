@@ -2205,6 +2205,8 @@ function emptyDashboardPayload({ id_bodega, bodega_nombre, scope, days, mov_days
       productos_vigentes: 0,
       productos_vencidos: 0,
       productos_proximos: 0,
+      productos_bajo_minimo: 0,
+      productos_entre_minimo_ideal: 0,
       cantidad_vigente: 0,
       cantidad_vencida: 0,
       cantidad_proxima: 0,
@@ -2291,6 +2293,35 @@ async function buildDashboardResumenPayload({ id_bodega, bodega_nombre, scope, d
     { id_bodega }
   );
 
+  const stockLevelPromise = pool.query(
+    `SELECT
+        COUNT(DISTINCT CASE
+          WHEN COALESCE(lpb.activo, 1) = 1
+               AND COALESCE(lpb.minimo, 0) > 0
+               AND COALESCE(vs.stock, 0) < COALESCE(lpb.minimo, 0)
+          THEN vs.id_producto
+          ELSE NULL
+        END) AS productos_bajo_minimo,
+        COUNT(DISTINCT CASE
+          WHEN COALESCE(lpb.activo, 1) = 1
+               AND COALESCE(lpb.minimo, 0) > 0
+               AND COALESCE(vs.stock, 0) >= COALESCE(lpb.minimo, 0)
+               AND (
+                 (COALESCE(lpb.maximo, 0) > 0 AND COALESCE(vs.stock, 0) < COALESCE(lpb.maximo, 0))
+                 OR (COALESCE(lpb.maximo, 0) <= 0)
+               )
+          THEN vs.id_producto
+          ELSE NULL
+        END) AS productos_entre_minimo_ideal
+     FROM v_stock_resumen vs
+     LEFT JOIN limites_producto_bodega lpb
+       ON lpb.id_bodega=vs.id_bodega
+      AND lpb.id_producto=vs.id_producto
+     WHERE vs.stock > 0
+       AND (:id_bodega IS NULL OR vs.id_bodega=:id_bodega)`,
+    { id_bodega }
+  );
+
   const topPromise = pool.query(
     `SELECT k.id_producto, p.nombre_producto, p.sku,
             SUM(ABS(k.delta_cantidad)) AS cantidad_movimiento
@@ -2319,14 +2350,16 @@ async function buildDashboardResumenPayload({ id_bodega, bodega_nombre, scope, d
     { id_bodega, mov_days }
   );
 
-  const [sumRes, moneyRes, topRes, lowRes] = await Promise.all([
+  const [sumRes, moneyRes, stockLevelRes, topRes, lowRes] = await Promise.all([
     withTimeout(sumPromise, 10000, [[]]),
     withTimeout(moneyPromise, 2500, [[]]),
+    withTimeout(stockLevelPromise, 8000, [[]]),
     withTimeout(topPromise, 7000, [[]]),
     withTimeout(lowPromise, 7000, [[]]),
   ]);
   const sum = (sumRes?.[0] || [])[0] || {};
   const moneyRow = (moneyRes?.[0] || [])[0] || {};
+  const stockLevelRow = (stockLevelRes?.[0] || [])[0] || {};
   const topRows = topRes?.[0] || [];
   const lowRows = lowRes?.[0] || [];
 
@@ -2342,6 +2375,8 @@ async function buildDashboardResumenPayload({ id_bodega, bodega_nombre, scope, d
       productos_vigentes: Number(sum?.productos_vigentes || 0),
       productos_vencidos: Number(sum?.productos_vencidos || 0),
       productos_proximos: Number(sum?.productos_proximos || 0),
+      productos_bajo_minimo: Number(stockLevelRow?.productos_bajo_minimo || 0),
+      productos_entre_minimo_ideal: Number(stockLevelRow?.productos_entre_minimo_ideal || 0),
       cantidad_vigente: Number(sum?.cantidad_vigente || 0),
       cantidad_vencida: Number(sum?.cantidad_vencida || 0),
       cantidad_proxima: Number(sum?.cantidad_proxima || 0),
@@ -5664,6 +5699,49 @@ app.get("/api/dashboard/detalle", auth, async (req, res) => {
     const mov_days = Math.max(7, Math.min(365, Number(req.query.mov_days || 30)));
     const limit = Math.max(1, Math.min(2000, Number(req.query.limit || 300)));
 
+
+    if (kind === "stock_minimo") {
+      const [rows] = await pool.query(
+        `SELECT vs.id_bodega,
+                b.nombre_bodega,
+                vs.id_producto,
+                p.nombre_producto,
+                p.sku,
+                COALESCE(vs.stock, 0) AS stock,
+                COALESCE(lpb.minimo, 0) AS minimo_stock,
+                COALESCE(lpb.maximo, 0) AS maximo_stock,
+                CASE
+                  WHEN COALESCE(vs.stock, 0) < COALESCE(lpb.minimo, 0) THEN 'Bajo minimo'
+                  ELSE 'Entre minimo e ideal'
+                END AS nivel_stock
+         FROM v_stock_resumen vs
+         JOIN bodegas b ON b.id_bodega=vs.id_bodega
+         JOIN productos p ON p.id_producto=vs.id_producto
+         LEFT JOIN limites_producto_bodega lpb
+           ON lpb.id_bodega=vs.id_bodega
+          AND lpb.id_producto=vs.id_producto
+         WHERE vs.stock > 0
+           AND COALESCE(lpb.activo, 1)=1
+           AND COALESCE(lpb.minimo, 0) > 0
+           AND (
+             COALESCE(vs.stock, 0) < COALESCE(lpb.minimo, 0)
+             OR (
+               COALESCE(vs.stock, 0) >= COALESCE(lpb.minimo, 0)
+               AND (
+                 (COALESCE(lpb.maximo, 0) > 0 AND COALESCE(vs.stock, 0) < COALESCE(lpb.maximo, 0))
+                 OR COALESCE(lpb.maximo, 0) <= 0
+               )
+             )
+           )
+           AND (:id_bodega IS NULL OR vs.id_bodega=:id_bodega)
+         ORDER BY b.nombre_bodega ASC,
+                  CASE WHEN COALESCE(vs.stock, 0) < COALESCE(lpb.minimo, 0) THEN 0 ELSE 1 END ASC,
+                  p.nombre_producto ASC
+         LIMIT ${limit}`,
+        { id_bodega }
+      );
+      return res.json({ kind, rows });
+    }
     const stockKinds = {
       vigentes: "(v.fecha_vencimiento IS NULL OR v.fecha_vencimiento >= CURDATE())",
       vencidos: "(v.fecha_vencimiento IS NOT NULL AND v.fecha_vencimiento < CURDATE())",
@@ -8631,19 +8709,4 @@ httpServer.listen(PORT, HOST, () => {
     console.log("Dashboard prewarm deshabilitado por DASHBOARD_PREWARM=0");
   }
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
