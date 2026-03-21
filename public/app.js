@@ -2566,7 +2566,7 @@ function bindReportProductPicker(buttonSelector, inputSelector, title, onPickedS
     await uiItemSearch({
       title,
       initialQuery: btn.value || input.value || "",
-      onSelect: (p) => {
+      onSelect: async (p) => {
         picked = p || null;
         const pickedText = String(p?.name || p?.sku || "").trim();
         btn.value = pickedText;
@@ -4196,7 +4196,10 @@ function renderExistenciasGrouped(moveDays) {
     const estadoRegla = reglaEstadoText(g.min_dias_regla, g.dias_alerta_antes, g.max_dias_vida);
     const estadoNivel = stockNivelText(g.stock_total, g.minimo_stock, g.maximo_stock);
     if (fBodega && !String(g.nombre_bodega || "").toLowerCase().includes(fBodega)) return false;
-    if (fProd && !String(g.nombre_producto || "").toLowerCase().includes(fProd)) return false;    if (fEstado.length && !fEstado.includes(estado)) return false;
+    const prodName = String(g.nombre_producto || "").toLowerCase();
+    const prodSku = String(g.sku || "").toLowerCase();
+    if (fProd && !prodName.includes(fProd) && !prodSku.includes(fProd)) return false;
+    if (fEstado.length && !fEstado.includes(estado)) return false;
     if (fRegla.length && !fRegla.includes(estadoRegla)) return false;
     if (fNivel.length && !fNivel.includes(estadoNivel)) return false;
     if (Number.isFinite(fStockMin) && fStockMin > 0 && Number(g.stock_total || 0) < fStockMin) return false;
@@ -7958,15 +7961,159 @@ if ($("#salSave")) {
 
 let ajList = [];
 let ajustesMotivosLoaded = false;
+let ajDireccionCurrent = "ENTRADA";
+let ajUpdatingDireccion = false;
+let ajStockActual = null;
+
+function getAjusteMeta(direccion) {
+  const isEntrada = String(direccion || "ENTRADA") === "ENTRADA";
+  return isEntrada
+    ? {
+        isEntrada: true,
+        sign: "+",
+        flowTitle: "Ajuste de entrada (+): suma unidades al stock",
+        flowDesc: "Usa este tipo cuando recibes producto fisico al inventario. Requiere lote para trazabilidad.",
+        qtyHead: "Cantidad (+)",
+        addLabel: "Agregar linea de entrada",
+        saveLabel: "Guardar ajuste de entrada",
+        helpType: "Entrada (+)",
+        helpStep3: "Revisa el impacto total y presiona Guardar ajuste de entrada.",
+      }
+    : {
+        isEntrada: false,
+        sign: "-",
+        flowTitle: "Ajuste de salida (-): resta unidades del stock",
+        flowDesc: "Usa este tipo cuando necesitas rebajar existencia por perdida, dano o correccion de inventario.",
+        qtyHead: "Cantidad (-)",
+        addLabel: "Agregar linea de salida",
+        saveLabel: "Guardar ajuste de salida",
+        helpType: "Salida (-)",
+        helpStep3: "Revisa el impacto total y presiona Guardar ajuste de salida.",
+      };
+}
+
+function updateAjusteImpactPreview() {
+  const cantidad = Number($("#ajCantidad")?.value || 0);
+  const meta = getAjusteMeta($("#ajDireccion")?.value || ajDireccionCurrent);
+  const text = `Impacto por linea: ${meta.sign}${cantidad > 0 ? cantidad : 0} unidades al stock.`;
+  const impact = $("#ajImpactBox");
+  if (impact) {
+    impact.textContent = text;
+    impact.classList.remove("is-entrada", "is-salida");
+    impact.classList.add(meta.isEntrada ? "is-entrada" : "is-salida");
+  }
+  updateAjusteStockPreview();
+}
+
+function getAjusteWarehouseId() {
+  return Number($("#ajWarehouse")?.value || 0) || Number(me?.id_warehouse || 0) || null;
+}
+
+function updateAjusteStockPreview() {
+  const stockInput = $("#ajStockActual");
+  const proyectadoInput = $("#ajStockProyectado");
+  if (!stockInput || !proyectadoInput) return;
+
+  const id = Number($("#ajProducto")?.dataset.id || 0);
+  if (!id || ajStockActual === null) {
+    stockInput.value = "";
+    proyectadoInput.value = "";
+    return;
+  }
+
+  const stockBase = Number(ajStockActual || 0);
+  const cantidad = Math.max(0, Number($("#ajCantidad")?.value || 0));
+  const isEntrada = String($("#ajDireccion")?.value || "ENTRADA") === "ENTRADA";
+  const proyectado = isEntrada ? stockBase + cantidad : stockBase - cantidad;
+
+  stockInput.value = fmtQty(stockBase);
+  proyectadoInput.value = fmtQty(proyectado);
+}
+
+async function loadAjusteStockActual() {
+  const id = Number($("#ajProducto")?.dataset.id || 0);
+  if (!id) {
+    ajStockActual = null;
+    updateAjusteStockPreview();
+    return;
+  }
+
+  const wh = getAjusteWarehouseId();
+  const qs = wh ? `?warehouse=${encodeURIComponent(wh)}` : "";
+  try {
+    const r = await fetch(`/api/productos/${id}/stock${qs}`, {
+      headers: { Authorization: "Bearer " + token },
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return;
+    ajStockActual = Number(j.stock || 0);
+    updateAjusteStockPreview();
+  } catch {}
+}
+
+function updateAjusteUiHints() {
+  const direccion = String($("#ajDireccion")?.value || ajDireccionCurrent || "ENTRADA");
+  const meta = getAjusteMeta(direccion);
+
+  const flowCard = $("#ajFlowCard");
+  const flowTitle = $("#ajFlowTitle");
+  const flowDesc = $("#ajFlowDesc");
+  if (flowTitle) flowTitle.textContent = meta.flowTitle;
+  if (flowDesc) flowDesc.textContent = meta.flowDesc;
+  if (flowCard) {
+    flowCard.classList.remove("is-entrada", "is-salida");
+    flowCard.classList.add(meta.isEntrada ? "is-entrada" : "is-salida");
+  }
+
+  if ($("#ajQtyHead")) $("#ajQtyHead").textContent = meta.qtyHead;
+  if ($("#ajAdd")) $("#ajAdd").textContent = meta.addLabel;
+  if ($("#ajSave")) $("#ajSave").textContent = meta.saveLabel;
+  if ($("#ajMiniHelpType")) $("#ajMiniHelpType").textContent = meta.helpType;
+  if ($("#ajMiniHelpStep3")) $("#ajMiniHelpStep3").innerHTML = `<strong>3.</strong> ${meta.helpStep3}`;
+
+  ["#ajLoteWrap", "#ajCaducidadWrap", "#ajCostoWrap"].forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    el.classList.toggle("hidden", !meta.isEntrada);
+  });
+
+  if ($("#ajLote")) $("#ajLote").disabled = !meta.isEntrada;
+  if ($("#ajCaducidad")) $("#ajCaducidad").disabled = !meta.isEntrada;
+  if ($("#ajCosto")) $("#ajCosto").disabled = !meta.isEntrada;
+
+  if (!meta.isEntrada) {
+    if ($("#ajLote")) $("#ajLote").value = "";
+    if ($("#ajCaducidad")) $("#ajCaducidad").value = "";
+    if ($("#ajCosto")) $("#ajCosto").value = "";
+  }
+
+  updateAjusteImpactPreview();
+}
 
 function renderAjustes() {
   const tb = $("#ajList");
   if (!tb) return;
+
+  const direccion = String($("#ajDireccion")?.value || ajDireccionCurrent || "ENTRADA");
+  const meta = getAjusteMeta(direccion);
+  const totalUnidades = ajList.reduce((acc, x) => acc + Number(x.cantidad || 0), 0);
+
+  const resume = $("#ajResume");
+  if (resume) {
+    resume.classList.add("ajResume");
+    if (!ajList.length) {
+      resume.textContent = "Sin lineas agregadas.";
+    } else {
+      resume.textContent = `${ajList.length} linea(s) lista(s). Impacto total estimado: ${meta.sign}${totalUnidades} unidades.`;
+    }
+  }
+
   if (!ajList.length) {
     tb.innerHTML = `<tr><td colspan="7">Sin lineas de ajuste.</td></tr>`;
     if ($("#ajSave")) $("#ajSave").disabled = true;
     return;
   }
+
   if ($("#ajSave")) $("#ajSave").disabled = false;
   tb.innerHTML = ajList
     .map(
@@ -7975,7 +8122,7 @@ function renderAjustes() {
         <td>${x.producto || ""}</td>
         <td>${x.lote || ""}</td>
         <td>${x.caducidad || ""}</td>
-        <td>${x.cantidad}</td>
+        <td class="ajQty ${meta.isEntrada ? "entrada" : "salida"}">${meta.sign}${x.cantidad}</td>
         <td>${fmtMoney(x.costo_unitario || 0)}</td>
         <td>${x.observacion_linea || ""}</td>
         <td><button class="iconBtn del" data-ajdel="${i}" title="Eliminar">X</button></td>
@@ -7983,6 +8130,7 @@ function renderAjustes() {
     `
     )
     .join("");
+
   tb.querySelectorAll("[data-ajdel]").forEach((b) => {
     b.onclick = () => {
       const idx = Number(b.dataset.ajdel || -1);
@@ -8036,6 +8184,7 @@ async function loadAjustesWarehouseFilter(force = false) {
       sel.disabled = true;
     }
     ajWarehouseLoaded = true;
+    await loadAjusteStockActual();
   } catch {}
 }
 
@@ -8046,11 +8195,12 @@ if ($("#ajSearchBtn")) {
       title: "Buscar producto para ajuste",
       initialQuery: input?.value || "",
       getWarehouseId: () => Number($("#ajWarehouse")?.value || 0) || Number(me?.id_warehouse || 0) || null,
-      onSelect: (p) => {
+      onSelect: async (p) => {
         if (!input) return;
         input.value = p.nombre_producto || "";
         input.dataset.id = String(p.id_producto || "");
         input.dataset.sku = p.sku || "";
+        await loadAjusteStockActual();
       },
     });
   };
@@ -8059,6 +8209,8 @@ if ($("#ajProducto")) {
   $("#ajProducto").addEventListener("input", () => {
     $("#ajProducto").dataset.id = "";
     $("#ajProducto").dataset.sku = "";
+    ajStockActual = null;
+    updateAjusteStockPreview();
   });
   $("#ajProducto").addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
@@ -8067,13 +8219,48 @@ if ($("#ajProducto")) {
   });
 }
 
-if ($("#ajDireccion")) {
-  $("#ajDireccion").addEventListener("change", () => {
-    const isEntrada = String($("#ajDireccion")?.value || "") === "ENTRADA";
-    if ($("#ajLote")) $("#ajLote").disabled = !isEntrada;
-    if ($("#ajCaducidad")) $("#ajCaducidad").disabled = !isEntrada;
-    if ($("#ajCosto")) $("#ajCosto").disabled = !isEntrada;
+if ($("#ajWarehouse")) {
+  $("#ajWarehouse").addEventListener("change", () => {
+    loadAjusteStockActual();
   });
+}
+
+if ($("#ajCantidad")) {
+  $("#ajCantidad").addEventListener("input", () => {
+    updateAjusteImpactPreview();
+  });
+}
+
+if ($("#ajDireccion")) {
+  ajDireccionCurrent = String($("#ajDireccion")?.value || "ENTRADA");
+  $("#ajDireccion").addEventListener("change", async () => {
+    if (ajUpdatingDireccion) return;
+
+    const sel = $("#ajDireccion");
+    if (!sel) return;
+    const nextDireccion = String(sel.value || "ENTRADA");
+
+    if (ajList.length && nextDireccion !== ajDireccionCurrent) {
+      const ok = await uiConfirm(
+        "Cambiar el tipo de ajuste vaciara las lineas cargadas para evitar errores. Deseas continuar?",
+        "Cambiar tipo de ajuste"
+      );
+      if (!ok) {
+        ajUpdatingDireccion = true;
+        sel.value = ajDireccionCurrent;
+        ajUpdatingDireccion = false;
+        updateAjusteUiHints();
+        return;
+      }
+      ajList.splice(0, ajList.length);
+    }
+
+    ajDireccionCurrent = nextDireccion;
+    updateAjusteUiHints();
+    renderAjustes();
+  });
+
+  updateAjusteUiHints();
 }
 
 if ($("#ajAdd")) {
@@ -8113,16 +8300,21 @@ if ($("#ajAdd")) {
       costo_unitario: isEntrada ? costo_unitario : 0,
       observacion_linea,
     });
+
     if ($("#ajProducto")) {
       $("#ajProducto").value = "";
       $("#ajProducto").dataset.id = "";
       $("#ajProducto").dataset.sku = "";
     }
+    ajStockActual = null;
+    updateAjusteStockPreview();
     if ($("#ajLote")) $("#ajLote").value = "";
     if ($("#ajCaducidad")) $("#ajCaducidad").value = "";
     if ($("#ajCosto")) $("#ajCosto").value = "";
     if ($("#ajCantidad")) $("#ajCantidad").value = "";
     if ($("#ajObsLinea")) $("#ajObsLinea").value = "";
+
+    updateAjusteImpactPreview();
     renderAjustes();
   };
 }
@@ -8209,7 +8401,6 @@ if ($("#ajSave")) {
     }
   };
 }
-
 window.addEventListener("beforeunload", (e) => {
   if (entList.length || salList.length || ajList.length) {
     e.preventDefault();
