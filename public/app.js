@@ -6907,6 +6907,8 @@ function renderKardexResumen(rows) {
 
   let cantidadEntradas = 0;
   let cantidadSalidas = 0;
+  let cantidadAjusteEntradas = 0;
+  let cantidadAjusteSalidas = 0;
   const transferMap = new Map();
   let stockTotalProducto = null;
 
@@ -6915,6 +6917,10 @@ function renderKardexResumen(rows) {
     const delta = Number(x.delta_cantidad || 0);
     if (tipo === "ENTRADA") cantidadEntradas += Math.max(0, delta);
     if (tipo === "SALIDA") cantidadSalidas += Math.max(0, -delta);
+    if (tipo === "AJUSTE") {
+      cantidadAjusteEntradas += Math.max(0, delta);
+      cantidadAjusteSalidas += Math.max(0, -delta);
+    }
     if (tipo === "TRANSFERENCIA") {
       const key = `${x.id_movimiento || 0}|${x.id_detalle || 0}`;
       const abs = Math.abs(delta);
@@ -6933,6 +6939,7 @@ function renderKardexResumen(rows) {
   box.innerHTML = `
     <span class="pill karResume in">Cantidad entradas: <strong>${fmtMoney(cantidadEntradas)}</strong></span>
     <span class="pill karResume out">Cantidad salidas: <strong>${fmtMoney(cantidadSalidas)}</strong></span>
+    <span class="pill karResume adjust">Ajustes (+/-): <strong>${fmtMoney(cantidadAjusteEntradas)} / ${fmtMoney(cantidadAjusteSalidas)}</strong></span>
     <span class="pill karResume transfer">Cantidad transferencias: <strong>${fmtMoney(cantidadTransferencias)}</strong></span>
     <span class="pill karResume stock">Total stock: <strong>${fmtMoney(stockTotalProducto)}</strong></span>
   `;
