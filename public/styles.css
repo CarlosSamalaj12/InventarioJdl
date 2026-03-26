@@ -4275,12 +4275,18 @@ button.homeDashCard{
 }
 #view-productos #prdEditVisibleWarehouses .prdWhEditor{
   width:100%;
+  overflow:visible;
 }
 #view-productos #prdEditVisibleWarehouses .prdWhEditorTools{
-  grid-template-columns:minmax(220px,1.25fr) repeat(3, minmax(140px,auto)) minmax(170px,auto);
+  grid-template-columns:minmax(260px,2fr) repeat(3, minmax(150px,1fr)) minmax(180px,1.2fr);
+}
+#view-productos #prdEditVisibleWarehouses .prdWhEditorTools .in{
+  min-width:0;
 }
 #view-productos #prdEditVisibleWarehouses .prdWhEditorList{
   grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));
+  max-height:340px;
+  min-height:140px;
 }
 #view-productos #prdEditSave{
   grid-column:1 / -1;
@@ -4446,3 +4452,4 @@ button.homeDashCard{
     grid-template-columns:1fr;
   }
 }
+

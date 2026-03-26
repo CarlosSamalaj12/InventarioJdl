@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import cors from "cors";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
@@ -2124,7 +2124,7 @@ function normalizeAvatarData(value) {
   if (value === null || value === undefined) return null;
   const s = String(value).trim();
   if (!s) return null;
-  if (!/^data:image\/(png|jpe?g|webp|gif);base64,[a-z0-9+/=\r\n]+$/i.test(s)) return null;
+  if (!/^data:image\/(png|jpe?g|webp|gif);base64,[a-z0-9+/=\\r\\n]+$/i.test(s)) return null;
   if (s.length > 1_400_000) return null;
   return s;
 }
@@ -8033,7 +8033,7 @@ app.get("/api/print/order/:id/pos80", auth, async (req, res) => {
   body{
     margin:0;
     background:#eef2f7;
-    font-family: "DejaVu Sans Mono","Consolas","Courier New",monospace;
+    font-family:Arial,"Helvetica Neue",Helvetica,"Liberation Sans","Noto Sans",sans-serif;
     color:#0f172a;
   }
   .toolbar{
@@ -8066,6 +8066,7 @@ app.get("/api/print/order/:id/pos80", auth, async (req, res) => {
     box-shadow:0 10px 28px rgba(2,6,23,.16);
     font-size:13px;
     line-height:1.35;
+      font-variant-numeric:tabular-nums;
   }
   .center{ text-align:center; }
   .logoWrap{
@@ -8093,15 +8094,19 @@ app.get("/api/print/order/:id/pos80", auth, async (req, res) => {
     justify-content:space-between;
     gap:6px;
   }
-  .muted{ color:#475569; }
-  .line{
-    padding:4px 0;
-    border-bottom:1px dashed #cbd5e1;
-    font-size:14px;
-  }
-  .line .muted{ font-size:14px; }
-  .line:last-child{ border-bottom:0; }
-  .n{ text-align:right; white-space:nowrap; padding-right:9px; }
+  .muted{ color:#475569; }  .tableHead{ padding:0 2px 5px; border-bottom:2px solid #475569; margin-bottom:5px; }
+  .line{ margin:7px 0; padding:7px 6px; border:2px solid #64748b; border-left:4px solid #0f172a; border-radius:4px; font-size:14px; }
+  .lineMain{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .productName{ flex:1; font-weight:700; line-height:1.25; word-break:break-word; }
+  .qtyWrap{ min-width:22mm; padding-left:6px; padding-right:4.2mm; border-left:2px dashed #64748b; text-align:right; margin-right:0; }
+  .qtyLabel{ color:#0f172a; font-size:12px; line-height:1.15; font-weight:800; letter-spacing:.1px; }
+  .qtyValue{ font-size:16px; font-weight:900; line-height:1.15; color:#000; }
+  .qtyNum{ font-size:16px; font-weight:900; line-height:1.1; color:#000; }
+  .lineNote{ margin-top:5px; padding-top:4px; border-top:2px dashed #94a3b8; color:#334155; font-size:12px; white-space:pre-wrap; }
+  .n{ text-align:right; white-space:nowrap; padding-right:0; }
+  .tableHead .n{ color:#0f172a; font-weight:900; padding-right:4.2mm; }
+  .sign{ margin-top:36px; text-align:center; color:#334155; font-size:12px; }
+  .signLine{ width:85%; margin:0 auto 6px; border-top:1px solid #64748b; }
   .foot{
     margin-top:8px;
     text-align:center;
@@ -8118,7 +8123,7 @@ app.get("/api/print/order/:id/pos80", auth, async (req, res) => {
       border:0;
       border-radius:0;
       box-shadow:none;
-      padding:0;
+      padding:0 2.8mm 0 0.8mm;
       font-size:12px;
     }
   }
@@ -8146,25 +8151,27 @@ app.get("/api/print/order/:id/pos80", auth, async (req, res) => {
     ${oh.observaciones ? `<div><b>Notas:</b> ${esc(oh.observaciones)}</div>` : ``}
 
     <div class="sep"></div>
-    <div class="row muted"><div>Producto</div><div class="n">Sol/Desp</div></div>
+    <div class="row muted tableHead"><div>Producto</div><div class="n">Sol/Desp</div></div>
     ${(lines || [])
       .map(
         (x) => `
       <div class="line">
-        <div>${esc(x.nombre_producto || "")}</div>
-        <div class="row">
-          <div class="muted">${esc(x.observacion_producto || "")}</div>
-          <div class="n">${esc(fmtQty(x.cantidad_solicitada))} / ${esc(fmtQty(x.cantidad_surtida))}</div>
+        <div class="lineMain">
+          <div class="productName">${esc(x.nombre_producto || "")}</div>
+          <div class="qtyWrap">
+            <div class="qtyLabel">Sol: <b>${esc(fmtQty(x.cantidad_solicitada))}</b></div>
+            <div class="qtyLabel">Desp:</div>
+            <div class="qtyValue">${esc(fmtQty(x.cantidad_surtida))}</div>
+          </div>
         </div>
+        ${x.observacion_producto ? `<div class="lineNote">${esc(x.observacion_producto)}</div>` : ``}
       </div>`
       )
-      .join("")}
-
-    <div class="sep"></div>
+      .join("")}<div class="sep"></div>
     <div class="row"><div><b>Total solicitado</b></div><div class="n"><b>${esc(fmtQty(totalSolicitado))}</b></div></div>
     <div class="row"><div><b>Total despachado</b></div><div class="n"><b>${esc(fmtQty(totalDespachado))}</b></div></div>
-    <div style="margin-top:36px; text-align:center; color:#334155; font-size:12px;">
-      <div style="width:85%; margin:0 auto 6px; border-top:1px solid #64748b;"></div>
+    <div class="sign">
+      <div class="signLine"></div>
       <div>Firma Encargado de Despacho</div>
     </div>
     <div class="foot">
@@ -8900,6 +8907,18 @@ httpServer.listen(PORT, HOST, () => {
     console.log("Dashboard prewarm deshabilitado por DASHBOARD_PREWARM=0");
   }
 });
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

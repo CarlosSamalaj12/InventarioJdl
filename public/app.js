@@ -1,4 +1,4 @@
-const token = localStorage.getItem("token");
+﻿const token = localStorage.getItem("token");
 const me = JSON.parse(localStorage.getItem("me") || "null");
 
 if (!token) location.href = "login.html";
@@ -5897,7 +5897,7 @@ function getImageExtensionFromMime(mime) {
 }
 
 function buildLogoAssetFromDataUrl(dataUrl) {
-  const match = String(dataUrl || "").match(/^data:(image\/(?:png|jpe?g|webp|gif));base64,([a-z0-9+/=\r\n]+)$/i);
+  const match = String(dataUrl || "").match(/^data:(image\/(?:png|jpe?g|webp|gif));base64,([a-z0-9+/=\\r\\n]+)$/i);
   if (!match) return null;
   const mime = match[1].toLowerCase();
   const base64 = match[2].replace(/\s+/g, "");
@@ -5958,7 +5958,7 @@ async function getExportLogoAsset(logoWarehouseId = null) {
 function chunkBase64(s, size = 76) {
   const out = [];
   for (let i = 0; i < s.length; i += size) out.push(s.slice(i, i + size));
-  return out.join("\r\n");
+  return out.join("\\r\\n");
 }
 
 function buildMhtmlExcel({ html, logoAsset }) {
@@ -12853,11 +12853,14 @@ async function openPedidoPosPreviewFromCart() {
     .map(
       (x) => `
       <div class="line">
-        <div>${escapeHtml(x.producto || "")}</div>
-        <div class="row">
-          <div class="muted">${escapeHtml(x.line_note || "")}</div>
-          <div class="n">${Number(x.qty_requested || 0).toLocaleString("en-US", { maximumFractionDigits: 3 })}</div>
+        <div class="lineMain">
+          <div class="productName">${escapeHtml(x.producto || "")}</div>
+          <div class="qtyWrap">
+            <div class="qtyLabel">Cant Sol</div>
+            <div class="n qtyValue">${Number(x.qty_requested || 0).toLocaleString("en-US", { maximumFractionDigits: 3 })}</div>
+          </div>
         </div>
+        ${x.line_note ? `<div class="lineNote">${escapeHtml(x.line_note)}</div>` : ``}
       </div>
     `
     )
@@ -12870,20 +12873,25 @@ async function openPedidoPosPreviewFromCart() {
 <style>
   :root{ --paper-width:80mm; }
   *{ box-sizing:border-box; }
-  body{ margin:0; background:#eef2f7; font-family:"DejaVu Sans Mono","Consolas","Courier New",monospace; color:#0f172a; }
+  body{ margin:0; background:#eef2f7; font-family:Arial,"Helvetica Neue",Helvetica,"Liberation Sans","Noto Sans",sans-serif; color:#0f172a; }
   .toolbar{ position:sticky; top:0; z-index:5; background:#0f172a; color:#fff; padding:8px 10px; display:flex; justify-content:center; gap:8px; }
   .toolbar button{ border:1px solid #334155; background:#1e293b; color:#fff; border-radius:8px; padding:6px 10px; font-size:14px; cursor:pointer; }
-  .paper{ width:var(--paper-width); margin:14px auto; background:#fff; border:1px solid #dbe2ea; border-radius:8px; padding:8px 8px 12px; box-shadow:0 10px 28px rgba(2,6,23,.16); font-size:13px; line-height:1.35; }
+  .paper{ width:var(--paper-width); margin:14px auto; background:#fff; border:1px solid #dbe2ea; border-radius:8px; padding:8px 8px 12px; box-shadow:0 10px 28px rgba(2,6,23,.16); font-size:13px; line-height:1.35; font-variant-numeric:tabular-nums; }
   .center{ text-align:center; }
   .logoWrap{ width:52mm; height:18mm; margin:0 auto 3px; display:flex; align-items:center; justify-content:center; }
   .logo{ max-width:52mm; max-height:18mm; width:auto; height:auto; display:block; object-fit:contain; }
   .sep{ border-top:1px dashed #334155; margin:6px 0; }
   .row{ display:flex; justify-content:space-between; gap:6px; }
-  .muted{ color:#475569; }
-  .line{ padding:4px 0; border-bottom:1px dashed #cbd5e1; font-size:14px; }
-  .line .muted{ font-size:14px; }
-  .line:last-child{ border-bottom:0; }
-  .n{ text-align:right; white-space:nowrap; padding-right:9px; }
+  .muted{ color:#475569; }  .tableHead{ padding:0 2px 5px; border-bottom:2px solid #475569; margin-bottom:5px; }
+  .line{ margin:7px 0; padding:7px 6px; border:2px solid #64748b; border-left:4px solid #0f172a; border-radius:4px; font-size:14px; }
+  .lineMain{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .productName{ flex:1; font-weight:700; line-height:1.25; word-break:break-word; }
+  .qtyWrap{ min-width:20mm; padding-left:6px; padding-right:4.2mm; border-left:2px dashed #64748b; text-align:right; margin-right:0; }
+  .qtyLabel{ color:#0f172a; font-size:12px; line-height:1.1; font-weight:800; letter-spacing:.1px; }
+  .qtyValue{ font-size:17px; font-weight:900; line-height:1.05; color:#000; }
+  .lineNote{ margin-top:5px; padding-top:4px; border-top:2px dashed #94a3b8; color:#334155; font-size:12px; white-space:pre-wrap; }
+  .n{ text-align:right; white-space:nowrap; padding-right:0; }
+  .tableHead .n{ color:#0f172a; font-weight:900; padding-right:4.2mm; }
   .sign{ margin-top:36px; text-align:center; font-size:12px; color:#334155; }
   .signLine{ margin:0 auto 6px; width:85%; border-top:1px solid #64748b; }
   .foot{ margin-top:8px; text-align:center; color:#334155; font-size:12px; }
@@ -12891,7 +12899,7 @@ async function openPedidoPosPreviewFromCart() {
     @page{ size:80mm auto; margin:2mm; }
     body{ background:#fff; }
     .toolbar{ display:none !important; }
-    .paper{ width:auto; margin:0; border:0; border-radius:0; box-shadow:none; padding:0; font-size:12px; }
+    .paper{ width:auto; margin:0; border:0; border-radius:0; box-shadow:none; padding:0 2.8mm 0 0.8mm; font-size:12px; }
   }
 </style>
 </head><body>
@@ -12912,7 +12920,7 @@ async function openPedidoPosPreviewFromCart() {
     <div><b>Fecha:</b> ${escapeHtml(now)}</div>
     ${notes ? `<div><b>Notas:</b> ${escapeHtml(notes)}</div>` : ``}
     <div class="sep"></div>
-    <div class="row muted"><div>Producto</div><div class="n">Cant Sol</div></div>
+    <div class="row muted tableHead"><div>Producto</div><div class="n">Cant Sol</div></div>
     ${linesHtml}
     <div class="sep"></div>
     <div class="row"><div><b>Total solicitado</b></div><div class="n"><b>${Number(totalSolicitado || 0).toLocaleString("en-US", { maximumFractionDigits: 3 })}</b></div></div>
@@ -14593,6 +14601,14 @@ if ($("#cuadreDetailList")) {
   });
 }
 initCuadreCajaDraft();
+
+
+
+
+
+
+
+
 
 
 

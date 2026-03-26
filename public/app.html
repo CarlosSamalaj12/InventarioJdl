@@ -1085,14 +1085,20 @@
 </div>
 
 <input type="hidden" id="prdEditId" />
-<input type="hidden" id="prdEditNombre" />
-<input type="hidden" id="prdEditSku" />
-<input type="hidden" id="prdEditMedida" />
-<input type="hidden" id="prdEditCategoria" />
-<input type="hidden" id="prdEditSubcategoria" />
-<div class="hidden" id="prdEditVisibleWarehouses"></div>
-<input type="hidden" id="prdEditActivo" />
-<button class="hidden" id="prdEditSave" type="button">Guardar edicion</button>
+<div class="grid4">
+  <div><label class="lbl">Nombre producto</label><input class="in" id="prdEditNombre" /></div>
+  <div><label class="lbl">SKU</label><input class="in" id="prdEditSku" /></div>
+  <div><label class="lbl">Medida</label><select class="in" id="prdEditMedida"></select></div>
+  <div><label class="lbl">Estado</label><select class="in" id="prdEditActivo"></select></div>
+</div>
+<div class="grid4">
+  <div><label class="lbl">Categoria</label><select class="in" id="prdEditCategoria"></select></div>
+  <div><label class="lbl">Subcategoria</label><select class="in" id="prdEditSubcategoria"></select></div>
+  <div style="grid-column: 1 / -1;"><label class="lbl">Bodegas visibles</label><div class="warehouseCheckList" id="prdEditVisibleWarehouses"></div></div>
+</div>
+<div class="addRow" style="justify-content:flex-end;">
+  <button class="btn ok" id="prdEditSave" type="button">Guardar cambios</button>
+</div>
 </div>
 </div>
 <div class="view hidden" id="view-limites">
@@ -2339,3 +2345,4 @@
 </script>
 </body>
 </html>
+
