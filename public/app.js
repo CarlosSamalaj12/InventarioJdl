@@ -3213,6 +3213,52 @@ function getTipoMovSalidaByDestino() {
   return "SALIDA";
 }
 
+function findDefaultMotivoForVentasNilas(rows) {
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const normalizedRows = rows.map((m) => ({
+    ...m,
+    _norm: normalizeSalidaRuleText(m?.nombre_motivo || ""),
+  }));
+  return (
+    normalizedRows.find((m) => m._norm === "ventas nilas") ||
+    normalizedRows.find((m) => m._norm === "venta nilas") ||
+    normalizedRows.find((m) => m._norm.includes("venta") && m._norm.includes("nilas")) ||
+    normalizedRows.find((m) => m._norm === "venta") ||
+    null
+  );
+}
+
+function isNilasWarehouseName(name) {
+  const normalizedName = normalizeSalidaRuleText(name || "");
+  return normalizedName === "bodega nilas bakery";
+}
+
+function isLoggedWarehouseNilas() {
+  const currentName = String($("#salBodega")?.value || menuWarehouseLabel || "");
+  return isNilasWarehouseName(currentName);
+}
+
+function findVentasNilasDestinoId() {
+  for (const [idBodega, bodega] of salDestinosMap.entries()) {
+    const normalizedName = normalizeSalidaRuleText(bodega?.nombre_bodega || "");
+    if (normalizedName === "ventas nilas" || normalizedName.includes("ventas nilas")) {
+      return String(idBodega);
+    }
+  }
+  return "";
+}
+
+function applyDefaultSalidaDestinoForNilasUser() {
+  const sel = $("#salDestino");
+  if (!sel || !isLoggedWarehouseNilas()) return;
+  if (String(sel.value || "").trim()) return;
+  const ventasNilasId = findVentasNilasDestinoId();
+  if (!ventasNilasId) return;
+  sel.value = ventasNilasId;
+  applySalidaDestinoSpecialRules();
+  motivosSalidaLoaded = false;
+}
+
 async function loadBodegasSalida() {
   const sel = $("#salDestino");
   if (!sel) return;
@@ -3228,6 +3274,7 @@ async function loadBodegasSalida() {
     sel.innerHTML =
       `<option value="">Seleccione bodega destino</option>` +
       destinos.map((b) => `<option value="${b.id_bodega}">${b.nombre_bodega}</option>`).join("");
+    applyDefaultSalidaDestinoForNilasUser();
   } catch {}
 }
 
@@ -3250,8 +3297,8 @@ async function loadMotivosSalida() {
       `<option value="">Seleccione</option>` +
       rows.map((m) => `<option value="${m.id_motivo}">${m.nombre_motivo}</option>`).join("");
     if (isVentasNilasDestinoSelected()) {
-      const venta = rows.find((m) => normalizeSalidaRuleText(m?.nombre_motivo || "") === "venta");
-      if (venta) sel.value = String(venta.id_motivo);
+      const motivoNilas = findDefaultMotivoForVentasNilas(rows);
+      if (motivoNilas) sel.value = String(motivoNilas.id_motivo);
     }
     if ($("#salTipoMov")) $("#salTipoMov").value = tipo;
     motivosSalidaLoaded = true;
@@ -3300,6 +3347,8 @@ async function loadBodegaUsuarioSalida() {
     if ($("#salBodega")) $("#salBodega").value = bodegaNombre;
     menuWarehouseLabel = bodegaNombre;
     renderMenuUserLabel();
+    applyDefaultSalidaDestinoForNilasUser();
+    if (isVentasNilasDestinoSelected()) loadMotivosSalida();
   } catch {}
 }
 
@@ -3716,8 +3765,11 @@ async function loadReportePedidosCatalogos() {
   if (!whReq || !whDesp || !catSel || !reqUserSel || !dspUserSel) return;
 
   try {
-    const [scopeR, catR, usrR] = await Promise.all([
+    const [scopeR, bodR, catR, usrR] = await Promise.all([
       fetch("/api/reportes/stock-scope", {
+        headers: { Authorization: "Bearer " + token },
+      }),
+      fetch("/api/bodegas", {
         headers: { Authorization: "Bearer " + token },
       }),
       fetch("/api/categorias", {
@@ -3728,11 +3780,13 @@ async function loadReportePedidosCatalogos() {
       }),
     ]);
     const scopeJ = await scopeR.json().catch(() => ({}));
+    const bodRows = await bodR.json().catch(() => []);
     const catRows = await catR.json().catch(() => []);
     const usrRows = await usrR.json().catch(() => []);
 
     if (scopeR.ok) {
       const rows = Array.isArray(scopeJ.bodegas) ? scopeJ.bodegas : [];
+      const requesterRows = Array.isArray(bodRows) ? bodRows : [];
       repPedCanView = Number(scopeJ.can_view_existencias) === 1 || scopeJ.can_view_existencias === true;
       repPedCanAllBodegas = Number(scopeJ.can_all_bodegas) === 1 || scopeJ.can_all_bodegas === true;
       if (!repPedCanView) {
@@ -3744,23 +3798,27 @@ async function loadReportePedidosCatalogos() {
         const html =
           `<option value="">Todas las bodegas</option>` +
           rows.map((b) => `<option value="${b.id_bodega}">${b.nombre_bodega}</option>`).join("");
-        whReq.innerHTML = html;
+        whReq.innerHTML =
+          `<option value="">Todas las bodegas</option>` +
+          requesterRows.map((b) => `<option value="${b.id_bodega}">${b.nombre_bodega}</option>`).join("");
         whDesp.innerHTML = html;
         whReq.disabled = false;
         whDesp.disabled = false;
       } else {
+        whReq.innerHTML =
+          `<option value="">Todas las bodegas</option>` +
+          requesterRows.map((b) => `<option value="${b.id_bodega}">${b.nombre_bodega}</option>`).join("");
+        whReq.disabled = false;
         const html = rows.map((b) => `<option value="${b.id_bodega}">${b.nombre_bodega}</option>`).join("");
-        whReq.innerHTML = html;
         whDesp.innerHTML = html;
         if (Number(scopeJ.id_bodega_default || 0)) {
           const v = String(scopeJ.id_bodega_default);
-          whReq.value = v;
           whDesp.value = v;
         }
-        whReq.disabled = true;
         whDesp.disabled = true;
       }
     }
+
 
     if (catR.ok) {
       const rows = Array.isArray(catRows) ? catRows : [];
@@ -6860,7 +6918,6 @@ async function loadReporteKardexCatalogos() {
     repKarCatalogosLoaded = true;
   } catch {}
 }
-
 async function loadReporteKardexSubcategorias() {
   const catId = Number($("#repKarCategoria")?.value || 0);
   const sel = $("#repKarSubcategoria");
@@ -6944,7 +7001,6 @@ function renderKardexResumen(rows) {
     <span class="pill karResume stock">Total stock: <strong>${fmtMoney(stockTotalProducto)}</strong></span>
   `;
 }
-
 async function loadReporteKardex() {
   const tb = $("#repKarList");
   if (!tb) return;
@@ -14601,54 +14657,6 @@ if ($("#cuadreDetailList")) {
   });
 }
 initCuadreCajaDraft();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

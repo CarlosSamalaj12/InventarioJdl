@@ -4,8 +4,11 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
   <title>Bodega - Login</title>
-  <link rel="icon" type="image/png" href="../imagenes/Oficial_JDL_blanco.png"/>
-  <link rel="shortcut icon" type="image/png" href="../imagenes/Oficial_JDL_blanco.png"/>
+  <link rel="manifest" href="./manifest.webmanifest"/>
+  <meta name="theme-color" content="#0f172a"/>
+  <link rel="icon" type="image/x-icon" href="./pw.ico"/>
+  <link rel="shortcut icon" type="image/x-icon" href="./pw.ico"/>
+  <link rel="apple-touch-icon" href="./pw.ico"/>
   <link rel="stylesheet" href="./styles.css"/>
 </head>
 <body class="loginPage">
@@ -345,14 +348,12 @@ syncLoginPickerMode();
 window.addEventListener("resize", syncLoginPickerMode);
 loadLoginUsers();
 </script>
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js").catch(() => {});
+    });
+  }
+</script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-

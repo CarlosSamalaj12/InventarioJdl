@@ -4,8 +4,11 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
   <title>Bodega - Principal</title>
-  <link rel="icon" type="image/png" href="../imagenes/Oficial_JDL_blanco.png"/>
-  <link rel="shortcut icon" type="image/png" href="../imagenes/Oficial_JDL_blanco.png"/>
+  <link rel="manifest" href="./manifest.webmanifest"/>
+  <meta name="theme-color" content="#0f172a"/>
+  <link rel="icon" type="image/x-icon" href="./pw.ico"/>
+  <link rel="shortcut icon" type="image/x-icon" href="./pw.ico"/>
+  <link rel="apple-touch-icon" href="./pw.ico"/>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css"/>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css"/>
   <link rel="stylesheet" href="./styles.css"/>
@@ -1691,11 +1694,13 @@
 <div class="grid4">
 <div>
 <label class="lbl" for="repPedRequesterUser">Solicitante</label>
-<input class="in" id="repPedRequesterUser" />
+<select class="in" id="repPedRequesterUser">
+</select>
 </div>
 <div>
 <label class="lbl" for="repPedDispatchUser">Usuario despacho</label>
-<input class="in" id="repPedDispatchUser" />
+<select class="in" id="repPedDispatchUser">
+</select>
 </div>
 <div>
 <label class="lbl" for="repPedCategoria">Categoria</label>
@@ -2343,6 +2348,12 @@
   </script>
   <script src="./app.js">
 </script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js").catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>
-

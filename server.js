@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import cors from "cors";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
@@ -6051,7 +6051,6 @@ app.get("/api/reportes/pedidos", auth, async (req, res) => {
     let id_bodega_surtidor = dispatchScope.selected;
     const localWarehouseId = !scope.can_all_bodegas ? Number(scope.id_bodega || 0) || null : null;
     if (!scope.can_all_bodegas) {
-      id_bodega_solicita = null;
       id_bodega_surtidor = null;
     }
     const requesterAccessFilter =
@@ -8907,22 +8906,3 @@ httpServer.listen(PORT, HOST, () => {
     console.log("Dashboard prewarm deshabilitado por DASHBOARD_PREWARM=0");
   }
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
