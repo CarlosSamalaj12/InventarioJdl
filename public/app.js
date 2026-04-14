@@ -4,6 +4,153 @@ const me = JSON.parse(localStorage.getItem("me") || "null");
 if (!token) location.href = "login.html";
 
 const $ = (s) => document.querySelector(s);
+let appWritePendingCount = 0;
+let appWriteProgressValue = 0;
+let appWriteProgressTimer = null;
+let appWriteProgressShowTimer = null;
+
+function setGlobalSaveProgress(value = 0) {
+  const bar = $("#globalSaveProgressBar");
+  if (!bar) return;
+  const safe = Math.max(0, Math.min(100, Number(value || 0)));
+  bar.style.width = `${safe}%`;
+}
+
+function showGlobalSaveProgress(label = "Guardando cambios...") {
+  const box = $("#globalSaveProgress");
+  const labelEl = $("#globalSaveProgressLabel");
+  if (!box) return;
+  if (labelEl) labelEl.textContent = String(label || "Guardando cambios...");
+  box.classList.remove("hidden");
+  box.classList.add("show");
+  box.setAttribute("aria-hidden", "false");
+}
+
+function hideGlobalSaveProgress() {
+  const box = $("#globalSaveProgress");
+  if (!box) return;
+  box.classList.remove("show");
+  box.setAttribute("aria-hidden", "true");
+  setTimeout(() => {
+    if (appWritePendingCount > 0) return;
+    box.classList.add("hidden");
+  }, 220);
+}
+
+
+function getGlobalWriteLockButtons() {
+  return Array.from(document.querySelectorAll([
+    'button[id*="Save"]',
+    'button[id*="ImportBtn"]',
+    'button[id="bodLogoSave"]',
+    'button[id="cuadreSavePdf"]'
+  ].join(','))).filter((btn) => btn && !btn.closest('.hidden'));
+}
+
+function setGlobalWriteLockButtons(disabled) {
+  getGlobalWriteLockButtons().forEach((btn) => {
+    if (!btn.dataset) return;
+    if (disabled) {
+      if (!Object.prototype.hasOwnProperty.call(btn.dataset, 'lockedByGlobalWrite')) {
+        btn.dataset.lockedByGlobalWrite = btn.disabled ? 'already' : '1';
+      }
+      btn.disabled = true;
+      btn.classList.add('is-busy');
+      if (!btn.dataset.originalBusyText) {
+        btn.dataset.originalBusyText = String(btn.textContent || '').trim();
+      }
+      const original = String(btn.dataset.originalBusyText || '').trim();
+      if (original && !/^guardando|^importando|^procesando/i.test(original)) {
+        if (/import/i.test(original)) btn.textContent = 'Importando...';
+        else if (/pdf/i.test(original)) btn.textContent = 'Preparando PDF...';
+        else btn.textContent = 'Guardando...';
+      }
+      return;
+    }
+    const lockState = String(btn.dataset.lockedByGlobalWrite || '');
+    if (!lockState) return;
+    delete btn.dataset.lockedByGlobalWrite;
+    btn.classList.remove('is-busy');
+    if (btn.dataset.originalBusyText) {
+      btn.textContent = btn.dataset.originalBusyText;
+      delete btn.dataset.originalBusyText;
+    }
+    if (lockState !== 'already') btn.disabled = false;
+  });
+}
+
+function startGlobalSaveProgress(label = "Guardando cambios...") {
+  appWritePendingCount += 1;
+  setGlobalWriteLockButtons(true);
+  if (appWritePendingCount > 1) return;
+  clearTimeout(appWriteProgressShowTimer);
+  clearInterval(appWriteProgressTimer);
+  appWriteProgressValue = 8;
+  setGlobalSaveProgress(appWriteProgressValue);
+  appWriteProgressShowTimer = setTimeout(() => {
+    showGlobalSaveProgress(label);
+    appWriteProgressTimer = setInterval(() => {
+      appWriteProgressValue = Math.min(92, appWriteProgressValue + (appWriteProgressValue < 40 ? 10 : appWriteProgressValue < 70 ? 6 : 2.5));
+      setGlobalSaveProgress(appWriteProgressValue);
+    }, 220);
+  }, 120);
+}
+
+function stopGlobalSaveProgress() {
+  appWritePendingCount = Math.max(0, appWritePendingCount - 1);
+  if (appWritePendingCount > 0) return;
+  setGlobalWriteLockButtons(false);
+  clearTimeout(appWriteProgressShowTimer);
+  clearInterval(appWriteProgressTimer);
+  appWriteProgressValue = 100;
+  setGlobalSaveProgress(appWriteProgressValue);
+  setTimeout(() => {
+    setGlobalSaveProgress(0);
+    hideGlobalSaveProgress();
+  }, 260);
+}
+
+function shouldTrackGlobalSaveRequest(input, init = {}) {
+  const method = String(init?.method || (typeof input === "object" && input?.method) || "GET").toUpperCase();
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
+  const url = String(typeof input === "string" ? input : input?.url || "");
+  if (!url) return false;
+  if (url.includes("/api/print/")) return false;
+  if (url.includes("/api/session-policy")) return false;
+  return url.startsWith("/api/") || url.includes("/api/");
+}
+
+function getGlobalSaveRequestLabel(input, init = {}) {
+  const url = String(typeof input === "string" ? input : input?.url || "").toLowerCase();
+  const method = String(init?.method || (typeof input === "object" && input?.method) || "POST").toUpperCase();
+  if (url.includes("/api/usuarios")) return method === "POST" ? "Guardando usuario..." : "Actualizando usuario...";
+  if (url.includes("/api/bodegas") && url.includes("/logo")) return "Guardando logo de bodega...";
+  if (url.includes("/api/bodegas")) return method === "POST" ? "Guardando bodega..." : "Actualizando bodega...";
+  if (url.includes("/api/productos")) return method === "POST" ? "Guardando producto..." : "Actualizando producto...";
+  if (url.includes("/api/categorias")) return "Guardando categoria...";
+  if (url.includes("/api/subcategorias")) return "Guardando subcategoria...";
+  if (url.includes("/api/proveedores")) return "Guardando proveedor...";
+  if (url.includes("/api/limites")) return "Guardando limite...";
+  if (url.includes("/api/reglas-subcategorias")) return "Guardando regla...";
+  if (url.includes("/api/orders")) return "Guardando pedido...";
+  if (url.includes("/api/entradas")) return "Guardando entrada...";
+  if (url.includes("/api/salidas")) return "Guardando salida...";
+  if (url.includes("/api/ajustes")) return "Guardando ajuste...";
+  if (url.includes("/api/cuadre-caja")) return "Guardando cuadre...";
+  if (url.includes("/import") || url.includes("xlsx") || url.includes("csv")) return "Importando datos...";
+  return method === "DELETE" ? "Procesando eliminacion..." : "Guardando cambios...";
+}
+
+const nativeFetch = window.fetch.bind(window);
+window.fetch = async function(input, init) {
+  const track = shouldTrackGlobalSaveRequest(input, init);
+  if (track) startGlobalSaveProgress(getGlobalSaveRequestLabel(input, init));
+  try {
+    return await nativeFetch(input, init);
+  } finally {
+    if (track) stopGlobalSaveProgress();
+  }
+};
 
 
 
@@ -501,21 +648,16 @@ function rebuildAddViewSections() {
           'bodRefresh', 'bodSave'
         ],
       },
-      {
-        title: 'Logos',
-        ids: [
-          'bodLogoAppFile', 'bodLogoAppData', 'bodLogoAppPreviewImg', 'bodLogoAppPreviewFallback', 'bodLogoAppClear',
-          'bodLogoPrintFile', 'bodLogoPrintData', 'bodLogoPrintPreviewImg', 'bodLogoPrintPreviewFallback', 'bodLogoPrintClear',
-          'bodLogoSave'
-        ],
-      },
       { title: 'Listado bodegas', ids: ['bodManageList'] },
       {
         title: 'Editar bodega',
         ids: [
           'bodEditId', 'bodEditNombre', 'bodEditTipo', 'bodEditTelefono', 'bodEditDireccion',
           'bodEditActivo', 'bodEditStock', 'bodEditRecibir', 'bodEditDespachar', 'bodEditModo', 'bodEditDestino',
-          'bodEditConteoFinal', 'bodEditSave'
+          'bodEditConteoFinal',
+          'bodLogoAppFile', 'bodLogoAppData', 'bodLogoAppPreviewImg', 'bodLogoAppPreviewFallback', 'bodLogoAppClear',
+          'bodLogoPrintFile', 'bodLogoPrintData', 'bodLogoPrintPreviewImg', 'bodLogoPrintPreviewFallback', 'bodLogoPrintClear',
+          'bodLogoSave', 'bodEditSave'
         ],
       },
     ];
@@ -523,7 +665,20 @@ function rebuildAddViewSections() {
       const sec = createBodegaSection(cfg.title, 'adminSectionBody');
       if (idx > 0) sec.classList.add('is-collapsed');
       bodCard.appendChild(sec);
-      moveIdsIntoContainer(bodCard, sec.querySelector('.repCollapseBodyInner'), cfg.ids);
+      const body = sec.querySelector('.repCollapseBodyInner');
+      if (cfg.title === 'Editar bodega' && body && !body.querySelector('#bodEditSummary')) {
+        const hint = document.createElement('div');
+        hint.className = 'note addSectionHint';
+        hint.textContent = 'Selecciona una bodega del listado para cargar sus datos. En este mismo panel puedes editar informacion, cambiar logos y guardar todo.';
+        body.appendChild(hint);
+
+        const summary = document.createElement('div');
+        summary.className = 'warehouseEditSummary';
+        summary.id = 'bodEditSummary';
+        summary.innerHTML = '<div class="warehouseEditSummaryTitle">Ninguna bodega seleccionada</div><div class="warehouseEditSummaryMeta">Presiona el boton editar en el listado para cargar la informacion aqui.</div>';
+        body.appendChild(summary);
+      }
+      moveIdsIntoContainer(bodCard, body, cfg.ids);
     });
   }
 
@@ -645,7 +800,7 @@ function applyAddFieldHints(){
       limWarehouse:'Seleccione bodega',limProduct:'Seleccione producto',limActive:'Seleccione estado',limImportDelimiter:'Seleccione separador',
       regSubcat:'Seleccione subcategoria',regActive:'Seleccione estado',
       usrRole:'Seleccione rol',usrWarehouse:'Seleccione bodega',usrActive:'Seleccione estado',usrCanSupervisor:'Seleccione opcion',usrNoAutoLogout:'Seleccione opcion',usrResetUser:'Seleccione usuario',usrPermUser:'Seleccione usuario',usrWhAccessUser:'Seleccione usuario',
-      bodTipo:'Seleccione tipo',bodActivo:'Seleccione estado',bodStock:'Maneja stock',bodRecibir:'Puede recibir',bodDespachar:'Puede despachar',bodModo:'Modo despacho',bodDestino:'Bodega destino',bodConteoFinal:'Permite conteo final'
+      bodTipo:'Seleccione tipo',bodActivo:'Seleccione estado',bodStock:'Maneja stock',bodRecibir:'Puede recibir',bodDespachar:'Puede despachar',bodModo:'Modo despacho',bodDestino:'Bodega destino',bodConteoFinal:'Permite conteo final',bodEditTipo:'Seleccione tipo',bodEditActivo:'Seleccione estado',bodEditStock:'Maneja stock',bodEditRecibir:'Puede recibir',bodEditDespachar:'Puede despachar',bodEditModo:'Modo despacho',bodEditDestino:'Bodega destino',bodEditConteoFinal:'Permite conteo final'
     };
     Object.entries(selects).forEach(([id,label])=>{
       const sel=document.getElementById(id);
@@ -717,7 +872,9 @@ function ensureStaticSelectCatalogs() {
       ],
       bodTipo: [
         { value: "DESPACHO", label: "Despacho / Principal" },
-        { value: "RECEPTORA", label: "Receptora" }
+        { value: "OPERATIVA", label: "Operativa" },
+        { value: "RECEPTORA", label: "Receptora" },
+        { value: "PRINCIPAL", label: "Principal" }
       ],
       bodActivo: [
         { value: "1", label: "Activa" },
@@ -745,7 +902,9 @@ function ensureStaticSelectCatalogs() {
       ],
       bodEditTipo: [
         { value: "DESPACHO", label: "Despacho / Principal" },
-        { value: "RECEPTORA", label: "Receptora" }
+        { value: "OPERATIVA", label: "Operativa" },
+        { value: "RECEPTORA", label: "Receptora" },
+        { value: "PRINCIPAL", label: "Principal" }
       ],
       bodEditActivo: [
         { value: "1", label: "Activa" },
@@ -955,7 +1114,7 @@ function ensureUiFieldLabel(el) {
   if (!['input', 'select', 'textarea'].includes(tag)) return;
   if (type === 'hidden' || type === 'checkbox' || type === 'radio') return;
   if (el.classList?.contains('hidden') || el.closest('.hidden')) return;
-  if (/Edit/i.test(el.id) || /(Data)$/i.test(el.id) || el.id === 'regEditSubcatId') return;
+
   if (/(Data)$/i.test(el.id) || el.id === 'usrEditId' || el.id === 'bodEditId' || el.id === 'regEditSubcatId') return;
   if (el.closest('table') || el.closest('.tableWrap') || el.closest('.searchWrap')) return;
   if (el.closest('.uiField')) return;
@@ -1818,7 +1977,7 @@ function applyActionPermissions() {
     "#repExistSearch", "#repEntSearch", "#repSalSearch", "#repPedSearch", "#repKarSearch",
     "#repDiaSearch", "#repDiaClear", "#repDiaQuery", "#repDiaShowAll", "#repDiaWarehouse", "#repDiaPdf",
     "#repCuadreSearch", "#repCuadreClear", "#repCuadreFecha", "#repCuadreWarehouse", "#repCuadreResponsable",
-    "#cuadreSearch", "#cuadreClear", "#cuadreFecha", "#cuadreWarehouse", "#cuadrePrintPos", "#cuadrePrintCarta",
+    "#cuadreSearch", "#cuadreClear", "#cuadreFecha", "#cuadreWarehouse", "#cuadrePrintPos", "#cuadrePrintCarta", "#cuadrePdfFormat", "#cuadreSavePdf",
     "#repCloseWarehouse", "#repCloseSearchDate", "#repCloseSearchBtn", "#repCloseAllBtn",
     "#repExistQuery", "#repEntQuery", "#repSalQuery", "#repPedQuery", "#repKarQuery",
     "#repEntLote", "#repSalLote", "#repPedLote", "#repKarLote",
@@ -8603,6 +8762,43 @@ async function saveBodegaLogo() {
   }
 }
 
+
+function updateWarehouseLogoActionState(warehouse = null) {
+  const btn = $("#bodLogoSave");
+  if (!btn) return;
+  if (!warehouse || !Number(warehouse.id_bodega || 0)) {
+    btn.textContent = "Guardar logos";
+    btn.disabled = true;
+    return;
+  }
+  const name = String(warehouse.nombre_bodega || `Bodega #${warehouse.id_bodega}`).trim();
+  btn.textContent = `Guardar logos de ${name}`;
+  btn.disabled = false;
+}
+function updateWarehouseEditSummary(warehouse = null) {
+  const box = $("#bodEditSummary");
+  if (!box) return;
+  if (!warehouse || !Number(warehouse.id_bodega || 0)) {
+    box.innerHTML =
+      '<div class="warehouseEditSummaryTitle">Ninguna bodega seleccionada</div>' +
+      '<div class="warehouseEditSummaryMeta">Presiona el boton editar en el listado para cargar la informacion aqui.</div>';
+    box.classList.remove("is-active");
+    updateWarehouseLogoActionState(null);
+    return;
+  }
+
+  const estado = Number(warehouse.activo) ? "Activa" : "Inactiva";
+  const destino = warehouse.nombre_bodega_destino_default || warehouse.id_bodega_destino_default || "Sin destino";
+  const modo = warehouse.modo_despacho_auto || "SALIDA";
+  const tipo = warehouse.tipo_bodega || "Sin tipo";
+
+  box.innerHTML =
+    `<div class="warehouseEditSummaryTitle">Editando: ${escapeHtml(warehouse.nombre_bodega || `Bodega #${warehouse.id_bodega}`)}</div>` +
+    `<div class="warehouseEditSummaryMeta">ID ${warehouse.id_bodega} | ${escapeHtml(tipo)} | ${estado} | Modo: ${escapeHtml(modo)} | Destino: ${escapeHtml(String(destino))}</div>`;
+  box.classList.add("is-active");
+  updateWarehouseLogoActionState(warehouse);
+}
+
 async function loadBodegasManage() {
   const tb = $("#bodManageList");
   if (!tb) return;
@@ -8646,7 +8842,7 @@ async function loadBodegasManage() {
           <td>${b.tipo_bodega || ""}</td>
           <td>${bodegaEstadoTag(b.activo)}</td>
           <td>${b.modo_despacho_auto || "SALIDA"}</td>
-          <td>${b.id_bodega_destino_default || "-"}</td>
+          <td>${b.nombre_bodega_destino_default || b.id_bodega_destino_default || "-"}</td>
           <td>
             <button class="iconBtn edit" data-bedit="${b.id_bodega}" title="Editar">E</button>
           </td>
@@ -8660,6 +8856,8 @@ async function loadBodegasManage() {
         const id = Number(btn.dataset.bedit || 0);
         const b = rows.find((x) => Number(x.id_bodega) === id);
         if (!b) return;
+        tb.querySelectorAll("tr").forEach((row) => row.classList.remove("is-editing"));
+        btn.closest("tr")?.classList.add("is-editing");
         $("#bodEditId").value = String(b.id_bodega);
         $("#bodEditNombre").value = b.nombre_bodega || "";
         $("#bodEditTipo").value = b.tipo_bodega || "";
@@ -8672,11 +8870,13 @@ async function loadBodegasManage() {
         $("#bodEditDestino").value = b.id_bodega_destino_default || "";
         if ($("#bodEditTelefono")) $("#bodEditTelefono").value = b.telefono_contacto || "";
         if ($("#bodEditDireccion")) $("#bodEditDireccion").value = b.direccion_contacto || "";
+        updateWarehouseEditSummary(b);
         loadBodegaLogoEditor(b.id_bodega, true);
         const editSection = Array.from(document.querySelectorAll("#view-bodegas [data-bod-collapse]")).find(
           (sec) => sec.querySelector(".panelTitle")?.textContent?.trim() === "Editar bodega"
         );
         syncBodegasCollapseState(editSection, true);
+        editSection?.scrollIntoView?.({ behavior: "smooth", block: "start" });
       };
     });
   } catch {
@@ -8764,6 +8964,7 @@ if ($("#bodEditSave")) {
       if ($("#bodLogoPrintFile")) $("#bodLogoPrintFile").value = "";
       setLogoPreview("#bodLogoAppPreviewImg", "#bodLogoAppPreviewFallback", "");
       setLogoPreview("#bodLogoPrintPreviewImg", "#bodLogoPrintPreviewFallback", "");
+      updateWarehouseEditSummary(null);
       loadBodegasManage();
       bodegasLoaded = false;
       loadBodegasPedido();
@@ -8781,6 +8982,7 @@ if ($("#bodEditSave")) {
 
 if ($("#bodLogoSave")) {
   $("#bodLogoSave").onclick = saveBodegaLogo;
+  updateWarehouseLogoActionState(null);
 }
 
 async function loadCategoriasManage() {
@@ -14531,6 +14733,10 @@ function openCuadrePrint(format = "carta") {
   setTimeout(() => form.remove(), 1000);
 }
 
+function openCuadrePdf() {
+  const format = $("#cuadrePdfFormat")?.value || "carta";
+  openCuadrePrint(format);
+}
 function initCuadreCajaDraft() {
   if (!$("#view-cuadre-caja")) return;
   const draft = loadCuadreDraftLocal();
@@ -14553,6 +14759,9 @@ if ($("#cuadrePrintPos")) {
 }
 if ($("#cuadrePrintCarta")) {
   $("#cuadrePrintCarta").onclick = () => openCuadrePrint("carta");
+}
+if ($("#cuadreSavePdf")) {
+  $("#cuadreSavePdf").onclick = openCuadrePdf;
 }
 if ($("#cuadreSave")) {
   $("#cuadreSave").onclick = saveCuadreCaja;
@@ -14657,6 +14866,8 @@ if ($("#cuadreDetailList")) {
   });
 }
 initCuadreCajaDraft();
+
+
 
 
 

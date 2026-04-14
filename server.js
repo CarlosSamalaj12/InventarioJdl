@@ -4999,11 +4999,11 @@ app.all("/api/print/cuadre-caja", auth, requirePermission("section.view.cuadre-c
 
     const baseCss = format === "pos"
       ? `
-        @page { size: 80mm auto; margin: 4mm 3mm 4mm 5mm; }
+        @page { size: 80mm auto; margin: 4mm 4mm 4mm 7mm; }
         body {
-          width: 71mm;
+          width: 67.5mm;
           margin: 0 auto;
-          padding: 0 1.5mm 0 2mm;
+          padding: 0 .5mm 0 .5mm;
           font-family: "DejaVu Sans Mono", "Consolas", "Lucida Console", monospace;
           font-size: 11px;
           line-height: 1.28;

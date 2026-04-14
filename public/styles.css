@@ -1,4 +1,4 @@
-:root{
+﻿:root{
   --font-main: "ITC Avant Garde Gothic", "Avant Garde", "Century Gothic", "URW Gothic L", "Futura", "Trebuchet MS", sans-serif;
   --bg0:#070A12; --bg1:#0B1024;
   --card: rgba(255,255,255,.06);
@@ -4451,5 +4451,330 @@ button.homeDashCard{
   .repTrendCharts{
     grid-template-columns:1fr;
   }
+}
+
+
+#view-bodegas #bodManageList tr.is-editing{
+  background: linear-gradient(180deg, rgba(37,99,235,.24), rgba(14,165,233,.12));
+}
+#view-bodegas #bodManageList tr.is-editing td{
+  box-shadow: inset 0 1px 0 rgba(125,211,252,.18), inset 0 -1px 0 rgba(125,211,252,.18);
+}
+#view-bodegas .warehouseEditSummary{
+  grid-column:1 / -1;
+  padding:12px 14px;
+  border-radius:14px;
+  border:1px dashed rgba(148,163,184,.24);
+  background: linear-gradient(180deg, rgba(15,23,42,.22), rgba(2,6,23,.14));
+  color:#bfd2e8;
+}
+#view-bodegas .warehouseEditSummary.is-active{
+  border-style:solid;
+  border-color: rgba(56,189,248,.28);
+  background: linear-gradient(180deg, rgba(8,47,73,.3), rgba(15,23,42,.22));
+}
+#view-bodegas .warehouseEditSummaryTitle{
+  font-size:14px;
+  font-weight:800;
+  color:#f8fafc;
+}
+#view-bodegas .warehouseEditSummaryMeta{
+  margin-top:4px;
+  font-size:12px;
+  line-height:1.45;
+  color:#c3d5ea;
+}
+#view-bodegas [data-bod-collapse] .adminSectionBody .uiField{
+  min-width:0;
+}
+#view-bodegas #bodEditSave{
+  min-width:220px;
+  justify-self:start;
+}
+@media (max-width: 760px){
+  #view-bodegas #bodEditSave{
+    width:100%;
+    min-width:0;
+  }
+}
+
+@media (max-width: 1400px), (max-height: 860px){
+  #view-cuadre-caja .card.light{
+    padding:12px;
+  }
+  #view-cuadre-caja .cuadreStickyHead{
+    gap:12px;
+    padding:12px;
+    margin-bottom:12px;
+  }
+  #view-cuadre-caja .cuadreShell{
+    grid-template-columns:minmax(0, 1.2fr) minmax(280px, .88fr);
+    gap:14px;
+  }
+  #view-cuadre-caja .cuadreResumeCard{
+    padding:12px 14px;
+  }
+  #view-cuadre-caja .cuadreResumeCard strong{
+    font-size:24px;
+  }
+  #view-cuadre-caja .cuadreBlock,
+  #view-cuadre-caja .cuadrePreviewCard{
+    padding:12px;
+    border-radius:16px;
+  }
+  #view-cuadre-caja .cuadreActions{
+    justify-content:flex-start;
+    gap:8px;
+  }
+  #view-cuadre-caja .cuadreActions .btn{
+    flex:1 1 170px;
+    min-height:40px;
+  }
+  #view-cuadre-caja .cuadreTicket{
+    padding:16px 14px;
+    border-radius:18px;
+  }
+  #view-cuadre-caja .cuadreTicketBrand{
+    font-size:16px;
+  }
+}
+
+@media (max-width: 1180px), (max-height: 760px){
+  #view-cuadre-caja .cuadreStickyHead{
+    position:static;
+    top:auto;
+  }
+  #view-cuadre-caja .cuadreShell{
+    grid-template-columns:1fr;
+  }
+  #view-cuadre-caja .cuadrePreviewWrap{
+    position:static;
+  }
+  #view-cuadre-caja .cuadrePreviewCard{
+    max-width:820px;
+    margin:0 auto;
+  }
+  #view-cuadre-caja .cuadreResumeGrid{
+    grid-template-columns:repeat(2, minmax(0,1fr));
+  }
+  #view-cuadre-caja .cuadreBlockHead{
+    align-items:stretch;
+  }
+  #view-cuadre-caja .cuadreBlockHead > .addRow,
+  #view-cuadre-caja .cuadreBlockHead > .btn{
+    width:100%;
+  }
+  #view-cuadre-caja .cuadreBlockHead .addRow{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(190px, auto);
+    gap:8px;
+  }
+  #view-cuadre-caja .cuadreDenomInput{
+    min-width:0;
+    width:100%;
+  }
+  #view-cuadre-caja .cuadreDenomTable{
+    min-width:460px;
+  }
+}
+
+@media (max-width: 760px){
+  #view-cuadre-caja .card.light{
+    padding:10px;
+  }
+  #view-cuadre-caja .cuadreStickyHead{
+    padding:10px;
+    gap:10px;
+    border-radius:14px;
+  }
+  #view-cuadre-caja .cuadreResumeGrid,
+  #view-cuadre-caja .cuadreMiniGrid,
+  #view-cuadre-caja .grid2,
+  #view-cuadre-caja .grid4{
+    grid-template-columns:1fr;
+  }
+  #view-cuadre-caja .cuadreActions{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+  }
+  #view-cuadre-caja .cuadreActions .btn,
+  #view-cuadre-caja .cuadreBlockHead > .btn,
+  #view-cuadre-caja .cuadreBlockHead .addRow .btn{
+    width:100%;
+    min-width:0;
+  }
+  #view-cuadre-caja .cuadreBlockHead .addRow{
+    grid-template-columns:1fr;
+  }
+  #view-cuadre-caja .cuadreResumeCard{
+    padding:10px 12px;
+    border-radius:14px;
+  }
+  #view-cuadre-caja .cuadreResumeCard strong{
+    font-size:20px;
+  }
+  #view-cuadre-caja .cuadreResumeLabel{
+    font-size:11px;
+    margin-bottom:4px;
+  }
+  #view-cuadre-caja .cuadreBlock,
+  #view-cuadre-caja .cuadrePreviewCard{
+    padding:10px;
+    border-radius:14px;
+  }
+  #view-cuadre-caja .cuadreTicket{
+    padding:14px 12px;
+    border-radius:16px;
+  }
+  #view-cuadre-caja .cuadreTicketBrand{
+    font-size:14px;
+    letter-spacing:.05em;
+  }
+  #view-cuadre-caja .cuadreTicketMeta span,
+  #view-cuadre-caja .cuadreTicketLine span,
+  #view-cuadre-caja .cuadreTicketMeta strong,
+  #view-cuadre-caja .cuadreTicketLine strong{
+    font-size:11px;
+  }
+  #view-cuadre-caja .cuadreTicketLine.strong span,
+  #view-cuadre-caja .cuadreTicketLine.strong strong{
+    font-size:12px;
+  }
+  #view-cuadre-caja .cuadreDenomTable{
+    min-width:420px;
+  }
+  #view-cuadre-caja .cuadreDenomTable th:nth-child(1),
+  #view-cuadre-caja .cuadreDenomTable td:nth-child(1){
+    width:104px;
+  }
+  #view-cuadre-caja .cuadreDenomTable th:nth-child(2),
+  #view-cuadre-caja .cuadreDenomTable td:nth-child(2){
+    width:114px;
+  }
+  #view-cuadre-caja .cuadreDenomTable th:nth-child(3),
+  #view-cuadre-caja .cuadreDenomTable td:nth-child(3){
+    width:96px;
+  }
+  #view-cuadre-caja .cuadreDenomTable th:nth-child(4),
+  #view-cuadre-caja .cuadreDenomTable td:nth-child(4){
+    width:86px;
+  }
+  #view-cuadre-caja .cuadreDenomBadge{
+    min-width:68px;
+    padding:7px 9px;
+    font-size:12px;
+  }
+  #view-cuadre-caja .app .cuadreDenomTableWrap .in.cuadreQtyInput,
+  .app #view-cuadre-caja .cuadreDenomTableWrap .in.cuadreQtyInput{
+    width:82px;
+    max-width:82px;
+    min-width:82px;
+  }
+}
+
+@media (max-width: 520px){
+  #view-cuadre-caja .cuadreActions{
+    grid-template-columns:1fr;
+  }
+  #view-cuadre-caja .cuadrePreviewEyebrow{
+    font-size:10px;
+  }
+  #view-cuadre-caja .cuadreTicketMeta div,
+  #view-cuadre-caja .cuadreTicketLine{
+    gap:6px;
+  }
+}
+
+#view-cuadre-caja #cuadrePdfFormat{
+  min-width:160px;
+}
+
+@media (max-width: 1400px), (max-height: 860px){
+  #view-cuadre-caja #cuadrePdfFormat{
+    flex:1 1 180px;
+  }
+}
+
+@media (max-width: 760px){
+  #view-cuadre-caja #cuadrePdfFormat{
+    width:100%;
+    min-width:0;
+  }
+}
+
+.globalSaveProgress{
+  position:fixed;
+  left:50%;
+  top:14px;
+  transform:translateX(-50%) translateY(-10px);
+  width:min(520px, calc(100vw - 24px));
+  z-index:2147483647 !important;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .22s ease, transform .22s ease;
+}
+.globalSaveProgress.show{
+  opacity:1;
+  transform:translateX(-50%) translateY(0);
+}
+.globalSaveProgress.hidden{display:none}
+.globalSaveProgressInner{
+  border-radius:16px;
+  padding:10px 12px;
+  background:linear-gradient(180deg, rgba(8,15,33,.97), rgba(15,23,42,.96));
+  border:1px solid rgba(96,165,250,.34);
+  box-shadow:0 16px 40px rgba(2,6,23,.52);
+  backdrop-filter:blur(10px);
+}
+.globalSaveProgressLabel{
+  font-size:13px;
+  font-weight:900;
+  color:#E2E8F0;
+  margin-bottom:8px;
+  letter-spacing:.01em;
+}
+.globalSaveProgressTrack{
+  height:8px;
+  border-radius:999px;
+  overflow:hidden;
+  background:rgba(30,41,59,.92);
+  border:1px solid rgba(125,211,252,.16);
+}
+.globalSaveProgressBar{
+  width:0;
+  height:100%;
+  border-radius:999px;
+  background:linear-gradient(90deg, #38BDF8 0%, #60A5FA 45%, #34D399 100%);
+  box-shadow:0 0 14px rgba(56,189,248,.45);
+  transition:width .22s ease;
+}
+@media (max-width: 760px){
+  .globalSaveProgress{
+    top:10px;
+    width:min(460px, calc(100vw - 18px));
+  }
+  .globalSaveProgressInner{
+    border-radius:14px;
+    padding:9px 10px;
+  }
+  .globalSaveProgressLabel{
+    font-size:12px;
+    margin-bottom:6px;
+  }
+  .globalSaveProgressTrack{
+    height:7px;
+  }
+}
+
+.app .btn.is-busy,
+.app button.is-busy{
+  opacity:.72;
+  cursor:progress;
+  filter:saturate(.88);
+}
+.app .btn.is-busy:disabled,
+.app button.is-busy:disabled{
+  opacity:.72;
 }
 

@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8"/>
@@ -688,6 +688,11 @@
 <button class="btn soft" id="cuadreSearch" type="button">Cargar</button>
 <button class="btn soft" id="cuadrePrintPos" type="button">Imprimir POS 80mm</button>
 <button class="btn soft" id="cuadrePrintCarta" type="button">Imprimir Carta</button>
+<select class="in" id="cuadrePdfFormat">
+<option value="pos">PDF POS 80mm</option>
+<option value="carta" selected>PDF Carta</option>
+</select>
+<button class="btn soft" id="cuadreSavePdf" type="button">Guardar PDF</button>
 <button class="btn ok" id="cuadreSave" type="button">Guardar cuadre</button>
 </div>
 <div class="cuadreResumeGrid">
@@ -1339,16 +1344,16 @@
 </table>
 <input id="bodEditId" />
 <input id="bodEditNombre" />
-<input id="bodEditTipo" />
+<select id="bodEditTipo"></select>
 <input id="bodEditTelefono" />
 <input id="bodEditDireccion" />
-<input id="bodEditActivo" />
-<input id="bodEditStock" />
-<input id="bodEditRecibir" />
-<input id="bodEditDespachar" />
-<input id="bodEditModo" />
-<input id="bodEditDestino" />
-<input id="bodEditConteoFinal" />
+<select id="bodEditActivo"></select>
+<select id="bodEditStock"></select>
+<select id="bodEditRecibir"></select>
+<select id="bodEditDespachar"></select>
+<select id="bodEditModo"></select>
+<select id="bodEditDestino"></select>
+<select id="bodEditConteoFinal"></select>
 <button id="bodEditSave">
 </button>
 </div>
@@ -2166,6 +2171,12 @@
 </div>
 <div class="alertBar hidden" id="alertBar">
 </div>
+<div class="globalSaveProgress hidden" id="globalSaveProgress" aria-live="polite" aria-hidden="true">
+<div class="globalSaveProgressInner">
+<div class="globalSaveProgressLabel" id="globalSaveProgressLabel">Guardando cambios...</div>
+<div class="globalSaveProgressTrack"><div class="globalSaveProgressBar" id="globalSaveProgressBar"></div></div>
+</div>
+</div>
   <div class="modal hidden" id="confirmModal">
 <div class="modalCard">
 <div class="cardTitle" id="confirmTitle">Confirmar accion</div>
@@ -2357,3 +2368,5 @@
   </script>
 </body>
 </html>
+
+
