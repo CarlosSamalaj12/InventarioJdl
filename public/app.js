@@ -4672,6 +4672,15 @@ function canSaveReporteCorteForSelectedWarehouse() {
   return getWarehouseCountOutFlag(idBodega) === 1;
 }
 
+function updateReporteCorteManualHint() {
+  const hint = $("#repDiaManualHint");
+  if (!hint) return;
+  const enabled = canSaveReporteCorteForSelectedWarehouse();
+  hint.style.display = enabled ? "" : "none";
+  hint.textContent = enabled
+    ? "Final manual inicia vacio para que captures el conteo real de cada producto. Luego usa Aplicar conteo para generar solo las salidas necesarias."
+    : "";
+}
 function updateReporteCorteCountAvailability() {
   const btn = $("#repDiaApplyCount");
   if (!btn) return;
@@ -4679,12 +4688,14 @@ function updateReporteCorteCountAvailability() {
   btn.disabled = !enabled || repDiaApplyInFlight;
   btn.style.display = enabled ? "" : "none";
   btn.title = enabled ? "" : "Esta bodega no tiene habilitada la salida por conteo final.";
+  updateReporteCorteManualHint();
 }
 
 function updateReporteCorteManualColumnVisibility() {
   const th = $("#repDiaFinalCol");
   if (!th) return;
   th.style.display = canSaveReporteCorteForSelectedWarehouse() ? "" : "none";
+  updateReporteCorteManualHint();
 }
 
 function updateSalidaConteoManualColumnVisibility() {
@@ -5120,7 +5131,8 @@ async function loadReporteCorteDiario() {
               type="number"
               min="0"
               step="0.001"
-              value="${toQtyInputValue(x.existencia_actual)}"
+              value=""
+              placeholder="Ingresa final real"
             />
           </td>`
               : ""
@@ -5167,7 +5179,7 @@ async function guardarSalidasPorConteoFinal() {
   if (invalidInput) {
     const badInput = document.querySelector(`[data-rep-dia-final="${Number(invalidInput.id_producto || 0)}"]`);
     if (badInput) markError(badInput);
-    showEntToast("Revisa las existencias finales: no pueden ser negativas ni mayores al stock actual.", "bad");
+    showEntToast("Completa Final manual en todos los productos. Los valores no pueden ser negativas ni mayores al stock actual.", "bad");
     return;
   }
 
@@ -14866,6 +14878,8 @@ if ($("#cuadreDetailList")) {
   });
 }
 initCuadreCajaDraft();
+
+
 
 
 

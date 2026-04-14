@@ -4539,7 +4539,7 @@ button.homeDashCard{
   }
 }
 
-@media (max-width: 1180px), (max-height: 760px){
+@media (max-width: 1180px){
   #view-cuadre-caja .cuadreStickyHead{
     position:static;
     top:auto;
@@ -4575,6 +4575,91 @@ button.homeDashCard{
   }
   #view-cuadre-caja .cuadreDenomTable{
     min-width:460px;
+  }
+}
+
+@media (max-height: 760px) and (min-width: 981px){
+  #view-cuadre-caja .card.light{
+    padding:10px;
+  }
+  #view-cuadre-caja .cuadreStickyHead{
+    position:sticky;
+    top:8px;
+    gap:8px;
+    padding:10px;
+    margin-bottom:10px;
+    border-radius:14px;
+  }
+  #view-cuadre-caja .cuadreShell{
+    grid-template-columns:minmax(0, 1.25fr) minmax(260px, .85fr);
+    gap:10px;
+  }
+  #view-cuadre-caja .cuadreMain{
+    gap:10px;
+  }
+  #view-cuadre-caja .cuadreResumeGrid{
+    grid-template-columns:repeat(4, minmax(0,1fr));
+    gap:8px;
+  }
+  #view-cuadre-caja .cuadreResumeCard{
+    padding:9px 10px;
+    border-radius:12px;
+  }
+  #view-cuadre-caja .cuadreResumeCard strong{
+    font-size:18px;
+  }
+  #view-cuadre-caja .cuadreResumeLabel{
+    font-size:10px;
+    margin-bottom:3px;
+  }
+  #view-cuadre-caja .cuadreBlock,
+  #view-cuadre-caja .cuadrePreviewCard{
+    padding:10px;
+    border-radius:12px;
+  }
+  #view-cuadre-caja .cuadreBlockHead{
+    gap:8px;
+    margin-bottom:8px;
+  }
+  #view-cuadre-caja .cuadreMiniGrid{
+    gap:8px;
+  }
+  #view-cuadre-caja .cuadreActions{
+    gap:6px;
+  }
+  #view-cuadre-caja .cuadreActions .btn{
+    min-height:36px;
+    flex:1 1 140px;
+  }
+  #view-cuadre-caja .cuadrePreviewWrap{
+    position:sticky;
+    top:8px;
+  }
+  #view-cuadre-caja .cuadrePreviewCard{
+    max-height:calc(100vh - 18px);
+    overflow:auto;
+  }
+  #view-cuadre-caja .cuadreTicket{
+    padding:12px 10px;
+    border-radius:14px;
+  }
+  #view-cuadre-caja .cuadreTicketBrand{
+    font-size:13px;
+    padding-bottom:8px;
+  }
+  #view-cuadre-caja .cuadreTicketMeta,
+  #view-cuadre-caja .cuadreTicketSection{
+    padding-top:8px;
+  }
+  #view-cuadre-caja .cuadreTicketMeta span,
+  #view-cuadre-caja .cuadreTicketLine span,
+  #view-cuadre-caja .cuadreTicketMeta strong,
+  #view-cuadre-caja .cuadreTicketLine strong{
+    font-size:10px;
+  }
+  #view-cuadre-caja .cuadreTicketLine.strong span,
+  #view-cuadre-caja .cuadreTicketLine.strong strong{
+    font-size:11px;
   }
 }
 
@@ -4777,4 +4862,5 @@ button.homeDashCard{
 .app button.is-busy:disabled{
   opacity:.72;
 }
+
 

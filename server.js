@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import cors from "cors";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
@@ -4999,24 +4999,25 @@ app.all("/api/print/cuadre-caja", auth, requirePermission("section.view.cuadre-c
 
     const baseCss = format === "pos"
       ? `
-        @page { size: 80mm auto; margin: 4mm 4mm 4mm 7mm; }
+        @page { size: 80mm auto; margin: 2mm; }
         body {
-          width: 67.5mm;
-          margin: 0 auto;
-          padding: 0 .5mm 0 .5mm;
+          width: auto;
+          margin: 0;
+          padding: 0 2.8mm 0 0.8mm;
           font-family: "DejaVu Sans Mono", "Consolas", "Lucida Console", monospace;
-          font-size: 11px;
-          line-height: 1.28;
+          font-size: 12px;
+          font-weight: 700;
+          line-height: 1.3;
           color: #111;
           -webkit-font-smoothing: none;
           text-rendering: optimizeLegibility;
           box-sizing: border-box;
         }
-        h1 { font-size: 14px; margin: 4px 0 5px; text-align: center; letter-spacing: .2px; }
-        .meta { text-align: center; font-size: 10px; margin-bottom: 7px; line-height: 1.3; }
+        h1 { font-size: 15px; margin: 4px 0 5px; text-align: center; letter-spacing: .2px; }
+        .meta { text-align: center; font-size: 11px; margin-bottom: 7px; line-height: 1.3; }
         table { width: 100%; border-collapse: collapse; margin-top: 6px; table-layout: fixed; }
         th, td { border-bottom: 1px dashed #bbb; padding: 3px 3px 3px 4px; vertical-align: top; }
-        th { text-align: left; font-size: 10px; }
+        th { text-align: left; font-size: 11px; }
         td.n { text-align: right; white-space: nowrap; padding-right: 1px; }
         .section { margin-top: 8px; font-weight: bold; border-top: 1px solid #000; padding: 4px 0 0 1px; }
         .tot { font-weight: bold; border-top: 1px solid #000; }
