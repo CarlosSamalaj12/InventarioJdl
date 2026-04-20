@@ -553,10 +553,10 @@ function rebuildAddViewSections() {
     const prdSections = [
       {
         title: 'Captura manual',
-        desc: 'Registra y actualiza productos de forma individual.',
+        desc: 'Paso 1: completa datos del producto, selecciona bodegas visibles y guarda.',
         ids: [
           'prdNombre','prdSku','prdMedida','prdActivo','prdCategoria','prdSubcategoria',
-          'prdVisibleWarehouses','prdSearch','prdSearchBtn','prdRefresh','prdSave'
+          'prdVisibleWarehouses','prdSave'
         ]
       },
       {
@@ -571,12 +571,12 @@ function rebuildAddViewSections() {
       },
       {
         title: 'Listado productos',
-        desc: 'Consulta, filtra y edita productos existentes.',
-        ids: ['prdManageList']
+        desc: 'Paso 2: busca y consulta productos. Desde Accion puedes cargar uno para editar.',
+        ids: ['prdSearch','prdSearchBtn','prdRefresh','prdManageList']
       },
       {
         title: 'Editar producto',
-        desc: 'Actualiza el producto seleccionado desde el listado.',
+        desc: 'Paso 3: edita el producto seleccionado desde el listado y guarda cambios.',
         ids: ['prdEditId','prdEditNombre','prdEditSku','prdEditMedida','prdEditActivo','prdEditCategoria','prdEditSubcategoria','prdEditVisibleWarehouses','prdEditSave']
       }
     ];
@@ -584,7 +584,9 @@ function rebuildAddViewSections() {
     prdSections.forEach((cfg, idx) => {
       const sec = createAdminCollapseSection(cfg.title, 'adminSectionBody');
       if (cfg.title === 'Captura manual') sec.classList.add('prdCaptureSection');
-      if (idx > 0) sec.classList.add('is-collapsed');
+      if (cfg.title === 'Listado productos') sec.classList.add('prdListSection');
+      if (cfg.title === 'Editar producto') sec.classList.add('prdEditSection');
+      if (idx > 0 && cfg.title !== 'Listado productos') sec.classList.add('is-collapsed');
       prdCardSection.appendChild(sec);
       const body = sec.querySelector('.repCollapseBodyInner');
       if (cfg.desc && body) {
@@ -4698,6 +4700,79 @@ function updateReporteCorteManualColumnVisibility() {
   updateReporteCorteManualHint();
 }
 
+function setPersistentFieldError(el, active) {
+  if (!el) return;
+  el.classList.toggle("field-error-persist", !!active);
+  if (!active) el.classList.remove("field-error");
+}
+
+function clearReporteCorteValidationMessage() {
+  const box = $("#repDiaValidation");
+  if (!box) return;
+  box.style.display = "none";
+  box.textContent = "";
+}
+
+function setReporteCorteValidationMessage(text) {
+  const box = $("#repDiaValidation");
+  if (!box) return;
+  const safe = String(text || "").trim();
+  box.textContent = safe;
+  box.style.display = safe ? "" : "none";
+}
+
+function getReporteCorteFinalIssues() {
+  return repDiaRowsCache
+    .map((row) => {
+      const input = document.querySelector(`[data-rep-dia-final="${Number(row.id_producto || 0)}"]`);
+      if (!input) return null;
+      const raw = String(input.value ?? "").trim();
+      const val = Number(raw);
+      const stockActual = Number(row.existencia_actual || 0);
+      let reason = "";
+      if (!raw) reason = "sin dato";
+      else if (!Number.isFinite(val)) reason = "valor invalido";
+      else if (val < 0) reason = "no puede ser negativo";
+      else if (val > stockActual) reason = `supera stock actual (${fmtQty(stockActual)})`;
+      return reason
+        ? {
+            row,
+            input,
+            reason,
+            label: String(row.nombre_producto || row.sku || `Producto ${row.id_producto || ""}`).trim(),
+          }
+        : null;
+    })
+    .filter(Boolean);
+}
+
+function updateReporteCorteFinalValidationUi({ focusFirst = false, showSummary = false } = {}) {
+  const issues = getReporteCorteFinalIssues();
+  repDiaRowsCache.forEach((row) => {
+    const input = document.querySelector(`[data-rep-dia-final="${Number(row.id_producto || 0)}"]`);
+    const hasIssue = issues.some((issue) => Number(issue.row.id_producto || 0) === Number(row.id_producto || 0));
+    setPersistentFieldError(input, hasIssue);
+  });
+  if (!issues.length) {
+    clearReporteCorteValidationMessage();
+    return issues;
+  }
+  if (showSummary) {
+    const detail = issues.map((issue) => `${issue.label}: ${issue.reason}`).join(" | ");
+    setReporteCorteValidationMessage(`Corrige Final manual en: ${detail}`);
+  }
+  if (focusFirst && issues[0]?.input) issues[0].input.focus();
+  return issues;
+}
+
+function bindReporteCorteFinalInputs() {
+  document.querySelectorAll("[data-rep-dia-final]").forEach((input) => {
+    input.addEventListener("input", () => {
+      updateReporteCorteFinalValidationUi({ showSummary: true });
+    });
+  });
+}
+
 function updateSalidaConteoManualColumnVisibility() {
   const finalTh = $("#salCountFinalCol");
   const outTh = $("#salCountOutCol");
@@ -5093,6 +5168,7 @@ async function loadReporteCorteDiario() {
     if (!rows.length) {
       tb.innerHTML = `<tr><td colspan="${canManual ? 7 : 6}">Sin datos para mostrar.</td></tr>`;
       if ($("#repDiaResume")) $("#repDiaResume").innerHTML = `<span class="pill ghost">Sin datos</span>`;
+      clearReporteCorteValidationMessage();
       updateReporteCorteCountAvailability();
       return;
     }
@@ -5141,11 +5217,14 @@ async function loadReporteCorteDiario() {
       `
       )
       .join("");
+    clearReporteCorteValidationMessage();
+    if (canManual) bindReporteCorteFinalInputs();
   } catch {
     repDiaRowsCache = [];
     tb.innerHTML = `<tr><td colspan="${canManual ? 7 : 6}">Error de red.</td></tr>`;
     if ($("#repDiaMeta")) $("#repDiaMeta").textContent = "Error de red";
     if ($("#repDiaResume")) $("#repDiaResume").innerHTML = `<span class="pill ghost">Error de red</span>`;
+    clearReporteCorteValidationMessage();
     updateReporteCorteCountAvailability();
     updateReporteCorteManualColumnVisibility();
   }
@@ -5170,16 +5249,10 @@ async function guardarSalidasPorConteoFinal() {
     return;
   }
 
-  const invalidInput = repDiaRowsCache.find((row) => {
-    const input = document.querySelector(`[data-rep-dia-final="${Number(row.id_producto || 0)}"]`);
-    const raw = String(input?.value ?? "").trim();
-    const val = Number(raw);
-    return !raw || !Number.isFinite(val) || val < 0 || val > Number(row.existencia_actual || 0);
-  });
-  if (invalidInput) {
-    const badInput = document.querySelector(`[data-rep-dia-final="${Number(invalidInput.id_producto || 0)}"]`);
-    if (badInput) markError(badInput);
-    showEntToast("Completa Final manual en todos los productos. Los valores no pueden ser negativas ni mayores al stock actual.", "bad");
+  const issues = updateReporteCorteFinalValidationUi({ focusFirst: true, showSummary: true });
+  if (issues.length) {
+    issues.forEach((issue) => markError(issue.input));
+    showEntToast("Corrige los productos marcados en rojo. Final manual no puede quedar vacio, ser negativo ni mayor al stock actual.", "bad");
     return;
   }
 
@@ -5593,19 +5666,24 @@ if ($("#repDiaClear")) {
     if ($("#repDiaList")) $("#repDiaList").innerHTML = `<tr><td colspan="7">Usa los filtros y presiona Buscar.</td></tr>`;
     if ($("#repDiaMeta")) $("#repDiaMeta").textContent = "Sin datos";
     if ($("#repDiaResume")) $("#repDiaResume").innerHTML = `<span class="pill ghost">Sin datos</span>`;
+    clearReporteCorteValidationMessage();
   };
 }
 
 if ($("#repDiaPdf")) {
   $("#repDiaPdf").onclick = () => {
-    const q = ($("#repDiaQuery")?.value || "").trim();
-    const showAll = $("#repDiaShowAll")?.checked ? "1" : "0";
-    const idBodega = Number($("#repDiaWarehouse")?.value || 0);
-    const tk = encodeURIComponent(token || "");
-    const qs = new URLSearchParams({ token: tk, q, show_all: showAll, limit: "3000" });
-    if (idBodega > 0) qs.set("warehouse", String(idBodega));
-    window.open(`${API_ORIGIN}/api/print/corte-diario?${qs.toString()}`, "_blank");
+    openReporteCortePrint("carta");
   };
+}
+
+function openReporteCortePrint(format = "carta") {
+  const q = ($("#repDiaQuery")?.value || "").trim();
+  const showAll = $("#repDiaShowAll")?.checked ? "1" : "0";
+  const idBodega = Number($("#repDiaWarehouse")?.value || 0);
+  const tk = encodeURIComponent(token || "");
+  const qs = new URLSearchParams({ token: tk, q, show_all: showAll, limit: "3000", format });
+  if (idBodega > 0) qs.set("warehouse", String(idBodega));
+  window.open(`${API_ORIGIN}/api/print/corte-diario?${qs.toString()}`, "_blank");
 }
 
 if ($("#repDiaClose")) {
@@ -5956,7 +6034,7 @@ async function loadReporteEntradas() {
   const tb = $("#repEntList");
   if (!tb) return;
   if (!repEntCanView) {
-    tb.innerHTML = `<tr><td colspan="16">Sin permiso para ver entradas.</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="17">Sin permiso para ver entradas.</td></tr>`;
     if ($("#repEntResume")) $("#repEntResume").innerHTML = `<span class="pill ghost">Sin permiso</span>`;
     return;
   }
@@ -5975,19 +6053,19 @@ async function loadReporteEntradas() {
   const warehouse = Number($("#repEntWarehouse")?.value || 0) || "";
   if (warehouse) qs.set("warehouse", String(warehouse));
 
-  tb.innerHTML = `<tr><td colspan="16">Cargando...</td></tr>`;
+  tb.innerHTML = `<tr><td colspan="17">Cargando...</td></tr>`;
   try {
     const r = await fetch(`/api/reportes/entradas?${qs.toString()}`, {
       headers: { Authorization: "Bearer " + token },
     });
     const rows = await r.json().catch(() => []);
     if (!r.ok) {
-      tb.innerHTML = `<tr><td colspan="16">Error al cargar reporte.</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="17">Error al cargar reporte.</td></tr>`;
       if ($("#repEntResume")) $("#repEntResume").innerHTML = `<span class="pill ghost">Error</span>`;
       return;
     }
     if (!Array.isArray(rows) || !rows.length) {
-      tb.innerHTML = `<tr><td colspan="16">Sin entradas con esos filtros.</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="17">Sin entradas con esos filtros.</td></tr>`;
       if ($("#repEntResume")) $("#repEntResume").innerHTML = `<span class="pill ghost">Sin datos</span>`;
       return;
     }
@@ -6014,14 +6092,90 @@ async function loadReporteEntradas() {
           <td>${x.tipo_entrada === "TRANSFERENCIA" ? "Transferencia" : x.nombre_motivo || ""}</td>
           <td>${x.no_documento || ""}</td>
           <td>${x.usuario_creador || ""}</td>
+          <td>${renderEntradaDashboardCell(x)}</td>
         </tr>
       `
       )
       .join("");
   } catch {
-    tb.innerHTML = `<tr><td colspan="16">Error de red.</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="17">Error de red.</td></tr>`;
     if ($("#repEntResume")) $("#repEntResume").innerHTML = `<span class="pill ghost">Error de red</span>`;
   }
+}
+
+function renderEntradaDashboardCell(row) {
+  const excluded = Number(row?.no_contar_dashboard || 0) === 1;
+  const movementId = Number(row?.id_movimiento || 0);
+  const label = excluded ? "Excluida" : "Incluida";
+  const badgeClass = excluded ? "warn" : "ok";
+  if (!hasPerm("action.manage_permissions") || !movementId) {
+    return `<span class="pill ${badgeClass}">${label}</span>`;
+  }
+  return `
+    <div class="repEntDashboardCell">
+      <span class="pill ${badgeClass}">${label}</span>
+      <button
+        class="btn soft btn-sm"
+        type="button"
+        data-ent-dashboard-toggle="${movementId}"
+        data-ent-dashboard-next="${excluded ? 0 : 1}"
+      >${excluded ? "Contar" : "Excluir"}</button>
+    </div>
+  `;
+}
+
+async function toggleEntradaDashboardFlag(idMovimiento, nextValue) {
+  const id = Number(idMovimiento || 0);
+  if (!id) return;
+  const exclude = Number(nextValue || 0) === 1 ? 1 : 0;
+  const ok = await uiConfirm(
+    exclude
+      ? `La entrada #${id} dejara de contar en el dashboard. Deseas continuar?`
+      : `La entrada #${id} volvera a contar en el dashboard. Deseas continuar?`,
+    exclude ? "Excluir de dashboard" : "Reincluir en dashboard"
+  );
+  if (!ok) return;
+  try {
+    const r = await fetch(`/api/entradas/${id}/dashboard-flag`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token,
+      },
+      body: JSON.stringify({ no_contar_dashboard: exclude ? 1 : 0 }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      showEntToast(j.error || "No se pudo actualizar la exclusion del dashboard.", "bad");
+      return;
+    }
+    showEntToast(
+      exclude
+        ? `Entrada #${id} excluida del dashboard.`
+        : `Entrada #${id} incluida nuevamente en el dashboard.`,
+      "ok"
+    );
+    await loadReporteEntradas();
+  } catch {
+    showEntToast("Error de red al actualizar exclusion del dashboard.", "bad");
+  }
+}
+
+if ($("#repEntList")) {
+  $("#repEntList").addEventListener("click", async (e) => {
+    const btn = e.target?.closest?.("[data-ent-dashboard-toggle]");
+    if (!btn) return;
+    if (!hasPerm("action.manage_permissions")) {
+      showEntToast("No tienes permiso para administrar exclusiones del dashboard.", "bad");
+      return;
+    }
+    btn.disabled = true;
+    try {
+      await toggleEntradaDashboardFlag(btn.dataset.entDashboardToggle, btn.dataset.entDashboardNext);
+    } finally {
+      btn.disabled = false;
+    }
+  });
 }
 
 if ($("#repEntCategoria")) {
@@ -10900,6 +11054,11 @@ function renderProductWarehouseChecklist(containerSelector, selectedIds = []) {
   const box = $(containerSelector);
   if (!box) return;
   const isEditMode = containerSelector === "#prdEditVisibleWarehouses";
+  box.classList.remove("warehouseCheckList");
+  box.classList.add("prdWarehouseMount");
+  box.classList.toggle("is-edit-mode", isEditMode);
+  const fieldWrap = box.closest(".grid2 > div, .grid3 > div, .grid4 > div, .uiField");
+  fieldWrap?.classList.add("prdWarehouseField");
   const picked = new Set((Array.isArray(selectedIds) ? selectedIds : []).map((x) => Number(x || 0)));
   if (!prdVisibleWarehousesCatalog.length) {
     box.innerHTML = `<div class="warehouseCheckEmpty">No hay bodegas disponibles.</div>`;
@@ -10908,41 +11067,52 @@ function renderProductWarehouseChecklist(containerSelector, selectedIds = []) {
   const itemHtml = prdVisibleWarehousesCatalog
     .map(
       (b) => `
-      <label class="warehouseCheckItem">
-        <input type="checkbox" data-prd-wh="${Number(b.id_bodega || 0)}" ${picked.has(Number(b.id_bodega || 0)) ? "checked" : ""} />
-        <span>${escapeHtml(b.nombre_bodega || `Bodega #${b.id_bodega}`)}</span>
+      <label class="warehouseCheckItem prdWhSwitchRow">
+        <span class="prdWhName">${escapeHtml(b.nombre_bodega || `Bodega #${b.id_bodega}`)}</span>
+        <span class="prdWhSwitch" title="Activar/desactivar bodega">
+          <input class="prdWhSwitchInput" type="checkbox" data-prd-wh="${Number(b.id_bodega || 0)}" ${picked.has(Number(b.id_bodega || 0)) ? "checked" : ""} />
+          <span class="prdWhSwitchSlider" aria-hidden="true"></span>
+        </span>
       </label>
     `
     )
     .join("");
-  if (!isEditMode) {
-    box.innerHTML = itemHtml;
-    return;
-  }
-
   const currentSearch = (box.querySelector("[data-prd-wh-search]")?.value || "").trim();
   const productName = escapeHtml($("#prdEditNombre")?.value?.trim() || "Producto seleccionado");
   const productSku = escapeHtml($("#prdEditSku")?.value?.trim() || "");
   const skuTag = productSku ? `<span class="pill ghost">SKU: ${productSku}</span>` : "";
-  box.innerHTML = `
-    <div class="prdWhEditor">
-      <div class="prdWhEditorHead">
-        <div class="prdWhEditorTitle">Habilitar en bodegas</div>
-        <div class="prdWhEditorMeta">
-          <span class="pill">${productName}</span>
-          ${skuTag}
-        </div>
-      </div>
-      <div class="prdWhEditorTools">
-        <input class="in" type="text" data-prd-wh-search placeholder="Buscar bodega..." title="Escribe el nombre de bodega para filtrar la lista." value="${escapeHtml(currentSearch)}" />
-        <button class="btn soft btn-sm" type="button" data-prd-wh-action="check-visible" title="Marca las bodegas que estan visibles en la lista filtrada.">Marcar visibles</button>
-        <button class="btn soft btn-sm" type="button" data-prd-wh-action="uncheck-visible" title="Desmarca las bodegas visibles en la lista filtrada.">Limpiar visibles</button>
-        <button class="btn soft btn-sm" type="button" data-prd-wh-action="only-mine" title="Deja seleccionada solo tu bodega asignada.">Solo mi bodega</button>
-        <span class="note" data-prd-wh-counter></span>
-      </div>
-      <div class="warehouseCheckList prdWhEditorList" data-prd-wh-list>${itemHtml}</div>
+  const toolsHtml = `
+    <div class="prdWhEditorTools">
+      <input class="in" type="text" data-prd-wh-search placeholder="Buscar bodega..." title="Escribe el nombre de bodega para filtrar la lista." value="${escapeHtml(currentSearch)}" />
+      <button class="btn soft btn-sm" type="button" data-prd-wh-action="check-visible" title="Marca las bodegas que estan visibles en la lista filtrada.">Marcar visibles</button>
+      <button class="btn soft btn-sm" type="button" data-prd-wh-action="uncheck-visible" title="Desmarca las bodegas visibles en la lista filtrada.">Limpiar visibles</button>
+      <button class="btn soft btn-sm" type="button" data-prd-wh-action="only-mine" title="Deja seleccionada solo tu bodega asignada.">Solo mi bodega</button>
+      <span class="note" data-prd-wh-counter></span>
     </div>
   `;
+
+  if (!isEditMode) {
+    box.innerHTML = `
+      <div class="prdWhPicker">
+        ${toolsHtml}
+        <div class="warehouseCheckList prdWhEditorList" data-prd-wh-list>${itemHtml}</div>
+      </div>
+    `;
+  } else {
+    box.innerHTML = `
+      <div class="prdWhEditor">
+        <div class="prdWhEditorHead">
+          <div class="prdWhEditorTitle">Habilitar en bodegas</div>
+          <div class="prdWhEditorMeta">
+            <span class="pill">${productName}</span>
+            ${skuTag}
+          </div>
+        </div>
+        ${toolsHtml}
+        <div class="warehouseCheckList prdWhEditorList" data-prd-wh-list>${itemHtml}</div>
+      </div>
+    `;
+  }
 
   const list = box.querySelector("[data-prd-wh-list]");
   const counter = box.querySelector("[data-prd-wh-counter]");
@@ -10957,7 +11127,7 @@ function renderProductWarehouseChecklist(containerSelector, selectedIds = []) {
     if (!list || !searchInput) return;
     const q = String(searchInput.value || "").trim().toLowerCase();
     list.querySelectorAll(".warehouseCheckItem").forEach((row) => {
-      const name = String(row.querySelector("span")?.textContent || "").toLowerCase();
+      const name = String(row.querySelector(".prdWhName")?.textContent || "").toLowerCase();
       row.style.display = !q || name.includes(q) ? "" : "none";
     });
   };

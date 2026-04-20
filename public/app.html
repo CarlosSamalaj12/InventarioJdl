@@ -1045,6 +1045,7 @@
         <div class="view hidden" id="view-productos">
 <div class="card light">
 <div class="cardTitle">Productos</div>
+<div class="note prdFlowHint">Flujo recomendado: 1) Captura manual para crear producto, 2) Listado productos para buscar, 3) Editar producto para actualizar.</div>
 
 <div class="grid4">
   <div><label class="lbl">Nombre producto</label><input class="in" id="prdNombre" /></div>
@@ -1060,7 +1061,7 @@
 </div>
 
 <div class="grid4 importGrid">
-  <div class="searchWrap" style="grid-column: span 2;"><input class="in" id="prdSearch" /><button class="btn soft btn-sm" id="prdSearchBtn" type="button">Buscar</button></div>
+  <div class="searchWrap" style="grid-column: span 2;"><input class="in" id="prdSearch" placeholder="Buscar por nombre o SKU" /><button class="btn soft btn-sm" id="prdSearchBtn" type="button">Buscar</button></div>
   <div><label class="lbl">CSV productos</label><input id="prdImportFile" type="file" /><div class="note" id="prdImportFileName">Ningun archivo seleccionado</div></div>
   <div><label class="lbl">Separador</label><select class="in" id="prdImportDelimiter"></select></div>
 </div>
@@ -1385,12 +1386,13 @@
 <div class="addRow" style="justify-content:flex-end; gap:8px">
 <button class="btn soft" id="repDiaClear" type="button">Limpiar</button>
 <button class="btn soft" id="repDiaSearch" type="button">Buscar</button>
-<button class="btn soft" id="repDiaPdf" type="button">PDF</button>
+<button class="btn soft" id="repDiaPdf" type="button">Imprimir carta</button>
 <button class="btn soft" id="repDiaApplyCount" type="button">Aplicar conteo</button>
 <button class="btn soft" id="repDiaHistory" type="button">Historial</button>
 <button class="btn soft" id="repDiaClose" type="button">Cerrar dia</button>
 </div>
 <div class="note" id="repDiaManualHint" style="display:none"></div>
+<div class="note repDiaValidationNote" id="repDiaValidation" style="display:none"></div>
 <div class="note" id="repDiaMeta">
 </div>
 <div class="note" id="repDiaResume">
@@ -1546,11 +1548,12 @@
 <th>Motivo</th>
 <th>Documento</th>
 <th>Usuario</th>
+<th>Dashboard</th>
 </tr>
 </thead>
 <tbody id="repEntList">
 <tr>
-<td colspan="16">Sin datos</td>
+<td colspan="17">Sin datos</td>
 </tr>
 </tbody>
 </table>

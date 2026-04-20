@@ -283,6 +283,54 @@ async function ensureWarehouseCountOutColumn() {
   }
 }
 
+async function ensureMovimientoDashboardColumn() {
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS c
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA=DATABASE()
+       AND TABLE_NAME='movimiento_encabezado'
+       AND COLUMN_NAME='no_contar_dashboard'`
+  );
+  const exists = Number(rows?.[0]?.c || 0) > 0;
+  if (!exists) {
+    await pool.query(
+      `ALTER TABLE movimiento_encabezado
+       ADD COLUMN no_contar_dashboard TINYINT(1) NOT NULL DEFAULT 0`
+    );
+  }
+}
+
+async function ensureMovimientoPastUpdateTrigger() {
+  await pool.query(`DROP TRIGGER IF EXISTS trg_me_no_update_pasado`);
+  await pool.query(`
+    CREATE TRIGGER trg_me_no_update_pasado
+    BEFORE UPDATE ON movimiento_encabezado
+    FOR EACH ROW
+    BEGIN
+      IF DATE(OLD.creado_en) <> CURDATE()
+         AND NOT (
+           COALESCE(@allow_dashboard_flag_past_update, 0) = 1
+           AND COALESCE(OLD.no_contar_dashboard, 0) <> COALESCE(NEW.no_contar_dashboard, 0)
+           AND COALESCE(OLD.tipo_movimiento, '') = COALESCE(NEW.tipo_movimiento, '')
+           AND COALESCE(OLD.id_motivo, 0) = COALESCE(NEW.id_motivo, 0)
+           AND COALESCE(OLD.id_bodega_origen, 0) = COALESCE(NEW.id_bodega_origen, 0)
+           AND COALESCE(OLD.id_bodega_destino, 0) = COALESCE(NEW.id_bodega_destino, 0)
+           AND COALESCE(OLD.id_proveedor, 0) = COALESCE(NEW.id_proveedor, 0)
+           AND COALESCE(OLD.no_documento, '') = COALESCE(NEW.no_documento, '')
+           AND COALESCE(OLD.observaciones, '') = COALESCE(NEW.observaciones, '')
+           AND COALESCE(OLD.creado_por, 0) = COALESCE(NEW.creado_por, 0)
+           AND COALESCE(OLD.confirmado_en, '1000-01-01 00:00:00') = COALESCE(NEW.confirmado_en, '1000-01-01 00:00:00')
+           AND COALESCE(OLD.estado, '') = COALESCE(NEW.estado, '')
+           AND COALESCE(OLD.creado_en, '1000-01-01 00:00:00') = COALESCE(NEW.creado_en, '1000-01-01 00:00:00')
+         )
+      THEN
+        SIGNAL SQLSTATE '45000'
+          SET MESSAGE_TEXT = 'No se puede modificar un movimiento de fecha anterior.';
+      END IF;
+    END
+  `);
+}
+
 async function ensureCuadreCajaTable() {
   await pool.query(
     `CREATE TABLE IF NOT EXISTS cuadre_caja (
@@ -1152,6 +1200,12 @@ ensureBodegaContactColumns().catch((e) => {
 });
 ensureWarehouseCountOutColumn().catch((e) => {
   console.error("No se pudo crear columna configuracion_bodega.permite_salida_conteo_final:", e);
+});
+ensureMovimientoDashboardColumn().catch((e) => {
+  console.error("No se pudo crear columna movimiento_encabezado.no_contar_dashboard:", e);
+});
+ensureMovimientoPastUpdateTrigger().catch((e) => {
+  console.error("No se pudo actualizar trigger trg_me_no_update_pasado:", e);
 });
 ensureCuadreCajaTable().catch((e) => {
   console.error("No se pudo crear tabla cuadre_caja:", e);
@@ -2273,22 +2327,33 @@ async function buildDashboardResumenPayload({ id_bodega, bodega_nombre, scope, d
 
   const moneyPromise = pool.query(
     `SELECT
-        SUM(vs.stock * COALESCE(kc.costo_unitario, 0)) AS total_dinero
+        SUM(
+          vs.stock * COALESCE(
+            (
+              SELECT k1.costo_unitario
+              FROM kardex k1
+              LEFT JOIN movimiento_encabezado me1 ON me1.id_movimiento=k1.id_movimiento
+              WHERE k1.id_bodega=vs.id_bodega
+                AND k1.id_producto=vs.id_producto
+                AND k1.delta_cantidad > 0
+                AND (me1.id_movimiento IS NULL OR me1.tipo_movimiento <> 'AJUSTE')
+                AND COALESCE(me1.no_contar_dashboard, 0) = 0
+              ORDER BY k1.creado_en DESC, k1.id_kardex DESC
+              LIMIT 1
+            ),
+            (
+              SELECT k2.costo_unitario
+              FROM kardex k2
+              WHERE k2.id_bodega=vs.id_bodega
+                AND k2.id_producto=vs.id_producto
+                AND k2.delta_cantidad > 0
+              ORDER BY k2.creado_en DESC, k2.id_kardex DESC
+              LIMIT 1
+            ),
+            0
+          )
+        ) AS total_dinero
      FROM v_stock_resumen vs
-     LEFT JOIN (
-       SELECT kx.id_bodega, kx.id_producto, MAX(kx.costo_unitario) AS costo_unitario
-       FROM kardex kx
-       JOIN (
-         SELECT id_bodega, id_producto, MAX(creado_en) AS max_creado
-         FROM kardex
-         WHERE delta_cantidad > 0
-         GROUP BY id_bodega, id_producto
-       ) lk ON lk.id_bodega=kx.id_bodega
-          AND lk.id_producto=kx.id_producto
-          AND lk.max_creado=kx.creado_en
-       WHERE kx.delta_cantidad > 0
-       GROUP BY kx.id_bodega, kx.id_producto
-     ) kc ON kc.id_bodega=vs.id_bodega AND kc.id_producto=vs.id_producto
      WHERE vs.stock > 0
        AND (:id_bodega IS NULL OR vs.id_bodega=:id_bodega)`,
     { id_bodega }
@@ -2324,8 +2389,11 @@ async function buildDashboardResumenPayload({ id_bodega, bodega_nombre, scope, d
             SUM(ABS(k.delta_cantidad)) AS cantidad_movimiento
      FROM kardex k
      JOIN productos p ON p.id_producto=k.id_producto
+     LEFT JOIN movimiento_encabezado me ON me.id_movimiento=k.id_movimiento
      WHERE (:id_bodega IS NULL OR k.id_bodega=:id_bodega)
        AND k.creado_en >= DATE_SUB(CURDATE(), INTERVAL :mov_days DAY)
+       AND (me.id_movimiento IS NULL OR me.tipo_movimiento <> 'AJUSTE')
+       AND COALESCE(me.no_contar_dashboard, 0) = 0
      GROUP BY k.id_producto, p.nombre_producto, p.sku
      HAVING SUM(ABS(k.delta_cantidad)) > 0
      ORDER BY cantidad_movimiento DESC, p.nombre_producto ASC
@@ -2338,8 +2406,11 @@ async function buildDashboardResumenPayload({ id_bodega, bodega_nombre, scope, d
             SUM(ABS(k.delta_cantidad)) AS cantidad_movimiento
      FROM kardex k
      JOIN productos p ON p.id_producto=k.id_producto
+     LEFT JOIN movimiento_encabezado me ON me.id_movimiento=k.id_movimiento
      WHERE (:id_bodega IS NULL OR k.id_bodega=:id_bodega)
        AND k.creado_en >= DATE_SUB(CURDATE(), INTERVAL :mov_days DAY)
+       AND (me.id_movimiento IS NULL OR me.tipo_movimiento <> 'AJUSTE')
+       AND COALESCE(me.no_contar_dashboard, 0) = 0
      GROUP BY k.id_producto, p.nombre_producto, p.sku
      HAVING SUM(ABS(k.delta_cantidad)) > 0
      ORDER BY cantidad_movimiento ASC, p.nombre_producto ASC
@@ -5117,6 +5188,7 @@ app.get("/api/print/corte-diario", auth, async (req, res) => {
   const warehouseScope = getScopedWarehouseFilter(scope, req.query.warehouse, { fallbackToDefault: true });
   if (warehouseScope.denied || !warehouseScope.selected) return res.status(403).send("Sin permiso");
   const id_bodega = warehouseScope.selected;
+  const printFormat = String(req.query.format || "carta").trim().toLowerCase() === "pos80" ? "pos80" : "carta";
   const qRaw = String(req.query.q || "").trim();
   const qf = buildTokenizedLikeFilter(qRaw, ["p.nombre_producto", "p.sku"], "pcdq");
   const show_all = String(req.query.show_all || "") === "1" ? 1 : 0;
@@ -5173,6 +5245,74 @@ app.get("/api/print/corte-diario", auth, async (req, res) => {
   const totalSal = rows.reduce((a, x) => a + Number(x.salidas_hoy || 0), 0);
   const totalAct = rows.reduce((a, x) => a + Number(x.existencia_actual || 0), 0);
   const logoSrc = await getWarehouseLogoDataUri(id_bodega);
+  const isPos80 = printFormat === "pos80";
+  const summaryHtml = isPos80
+    ? `
+    <div class="ticketSummary">
+      <div class="ticketSummaryRow"><span>Existencia ayer</span><b>${fmtQty(totalAyer)}</b></div>
+      <div class="ticketSummaryRow"><span>Entradas hoy</span><b>${fmtQty(totalEnt)}</b></div>
+      <div class="ticketSummaryRow"><span>Salidas hoy</span><b>${fmtQty(totalSal)}</b></div>
+      <div class="ticketSummaryRow"><span>Existencia actual</span><b>${fmtQty(totalAct)}</b></div>
+    </div>
+  `
+    : `
+    <div class="resume">
+      <span>Existencia ayer: <b>${fmtQty(totalAyer)}</b></span>
+      <span>Entradas hoy: <b>${fmtQty(totalEnt)}</b></span>
+      <span>Salidas hoy: <b>${fmtQty(totalSal)}</b></span>
+      <span>Existencia actual: <b>${fmtQty(totalAct)}</b></span>
+    </div>
+  `;
+  const rowsHtml = isPos80
+    ? `
+      <div class="ticketSectionTitle">Detalle de productos</div>
+      ${rows
+        .map(
+          (x) => `
+        <div class="ticketItem">
+          <div class="ticketItemName">${x.nombre_producto || ""}</div>
+          <div class="ticketItemSku">SKU: ${x.sku || ""}</div>
+          <div class="ticketQtyGrid">
+            <div class="ticketMetric"><span>Ayer</span><b>${fmtQty(x.existencia_ayer)}</b></div>
+            <div class="ticketMetric"><span>Entradas</span><b>${fmtQty(x.entradas_hoy)}</b></div>
+            <div class="ticketMetric"><span>Salidas</span><b>${fmtQty(x.salidas_hoy)}</b></div>
+            <div class="ticketMetric"><span>Actual</span><b>${fmtQty(x.existencia_actual)}</b></div>
+          </div>
+        </div>
+      `
+        )
+        .join("")}
+    `
+    : `
+      <table>
+        <thead>
+          <tr>
+            <th>Producto</th>
+            <th>SKU</th>
+            <th>Existencia ayer</th>
+            <th>Entradas hoy</th>
+            <th>Salidas hoy</th>
+            <th>Existencia actual</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows
+            .map(
+              (x) => `
+            <tr>
+              <td>${x.nombre_producto || ""}</td>
+              <td>${x.sku || ""}</td>
+              <td class="n">${fmtQty(x.existencia_ayer)}</td>
+              <td class="n">${fmtQty(x.entradas_hoy)}</td>
+              <td class="n">${fmtQty(x.salidas_hoy)}</td>
+              <td class="n">${fmtQty(x.existencia_actual)}</td>
+            </tr>
+          `
+            )
+            .join("")}
+        </tbody>
+      </table>
+    `;
 
   const html = `
 <!doctype html><html lang="es"><head>
@@ -5180,59 +5320,102 @@ app.get("/api/print/corte-diario", auth, async (req, res) => {
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Corte diario</title>
 <style>
-  body{font-family: Arial; padding:16px;}
-  .headLogo{display:block; margin:0 auto 10px; max-height:64px; width:auto; object-fit:contain;}
-  .headTitle{margin:4px 0 0; text-align:center;}
-  .muted{color:#666; font-size:12px; text-align:center;}
+  *{box-sizing:border-box;}
+  body{
+    font-family: Arial, sans-serif;
+    padding:${isPos80 ? "4px" : "16px"};
+    margin:0;
+    color:#111;
+    background:${isPos80 ? "#fff" : "#fff"};
+    font-variant-numeric:tabular-nums;
+  }
+  .page{width:${isPos80 ? "76mm" : "100%"}; margin:0 auto;}
+  .headLogo{display:block; margin:0 auto ${isPos80 ? "6px" : "10px"}; max-height:${isPos80 ? "15mm" : "64px"}; width:auto; max-width:100%; object-fit:contain;}
+  .headTitle{margin:4px 0 0; text-align:center; font-size:${isPos80 ? "15px" : "22px"}; line-height:1.15;}
+  .muted{color:#666; font-size:${isPos80 ? "9px" : "12px"}; text-align:center; margin-top:4px; line-height:1.25;}
   table{width:100%; border-collapse:collapse; margin-top:12px;}
-  th,td{border:1px solid #ddd; padding:4px 6px; font-size:11px; line-height:1.2;}
+  th,td{border:1px solid #ddd; padding:${isPos80 ? "3px 4px" : "4px 6px"}; font-size:${isPos80 ? "9px" : "11px"}; line-height:1.2; vertical-align:top;}
   th{background:#f5f5f5;}
   td.n{text-align:right;}
-  .resume{margin-top:8px; display:flex; gap:10px; flex-wrap:wrap; justify-content:center;}
-  .resume span{font-size:12px; border:1px solid #ddd; border-radius:999px; padding:4px 10px;}
+  .resume{margin-top:8px; display:flex; gap:${isPos80 ? "4px" : "10px"}; flex-wrap:wrap; justify-content:center;}
+  .resume span{font-size:${isPos80 ? "9px" : "12px"}; border:1px solid #ddd; border-radius:${isPos80 ? "8px" : "999px"}; padding:${isPos80 ? "3px 6px" : "4px 10px"};}
+  .ticketSummary{
+    margin-top:8px;
+    border-top:1px dashed #888;
+    border-bottom:1px dashed #888;
+    padding:6px 0;
+  }
+  .ticketSummaryRow{
+    display:flex;
+    justify-content:space-between;
+    gap:8px;
+    font-size:10px;
+    line-height:1.35;
+    padding:1px 0;
+  }
+  .ticketSummaryRow b{font-size:10.5px;}
+  .ticketSectionTitle{
+    margin-top:8px;
+    padding:4px 0 5px;
+    border-bottom:1px solid #222;
+    font-size:10px;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:.4px;
+  }
+  .ticketItem{
+    border-bottom:1px dashed #b9b9b9;
+    padding:6px 0;
+    page-break-inside:avoid;
+  }
+  .ticketItemName{
+    font-size:10.5px;
+    font-weight:700;
+    line-height:1.25;
+    word-break:break-word;
+    margin-bottom:2px;
+  }
+  .ticketItemSku{
+    font-size:8.5px;
+    color:#555;
+    margin-bottom:5px;
+    word-break:break-all;
+  }
+  .ticketQtyGrid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:4px 8px;
+  }
+  .ticketMetric{
+    display:flex;
+    justify-content:space-between;
+    gap:6px;
+    min-width:0;
+    font-size:9px;
+    line-height:1.25;
+  }
+  .ticketMetric span{color:#555;}
+  .ticketMetric b{
+    font-size:9.5px;
+    color:#000;
+    white-space:nowrap;
+  }
   @media print{
-    @page{ size: A4 portrait; margin: 10mm; }
+    @page{ size: ${isPos80 ? "80mm auto" : "letter portrait"}; margin: ${isPos80 ? "2mm" : "10mm"}; }
+    body{padding:0;}
+    .page{width:auto;}
   }
 </style>
 </head><body>
-  <img class="headLogo" src="${logoSrc}" alt="Hotel Jardines del Lago" />
-  <h2 class="headTitle">Corte diario de inventario</h2>
-  <div class="muted">Bodega: ${bod?.nombre_bodega || `#${id_bodega}`}</div>
-  <div class="muted">Ayer: ${fmtDate(new Date(Date.now() - 24 * 60 * 60 * 1000))} | Hoy: ${fmtDate(new Date())}</div>
-  <div class="resume">
-    <span>Existencia ayer: <b>${fmtQty(totalAyer)}</b></span>
-    <span>Entradas hoy: <b>${fmtQty(totalEnt)}</b></span>
-    <span>Salidas hoy: <b>${fmtQty(totalSal)}</b></span>
-    <span>Existencia actual: <b>${fmtQty(totalAct)}</b></span>
+  <div class="page">
+    <img class="headLogo" src="${logoSrc}" alt="Hotel Jardines del Lago" />
+    <h2 class="headTitle">Corte diario de inventario</h2>
+    <div class="muted">Formato: ${isPos80 ? "POS 80 mm" : "Carta"}</div>
+    <div class="muted">Bodega: ${bod?.nombre_bodega || `#${id_bodega}`}</div>
+    <div class="muted">Ayer: ${fmtDate(new Date(Date.now() - 24 * 60 * 60 * 1000))} | Hoy: ${fmtDate(new Date())}</div>
+    ${summaryHtml}
+    ${rowsHtml}
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>Producto</th>
-        <th>SKU</th>
-        <th>Existencia ayer</th>
-        <th>Entradas hoy</th>
-        <th>Salidas hoy</th>
-        <th>Existencia actual</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${rows
-        .map(
-          (x) => `
-        <tr>
-          <td>${x.nombre_producto || ""}</td>
-          <td>${x.sku || ""}</td>
-          <td class="n">${fmtQty(x.existencia_ayer)}</td>
-          <td class="n">${fmtQty(x.entradas_hoy)}</td>
-          <td class="n">${fmtQty(x.salidas_hoy)}</td>
-          <td class="n">${fmtQty(x.existencia_actual)}</td>
-        </tr>
-      `
-        )
-        .join("")}
-    </tbody>
-  </table>
   <script>window.print()</script>
 </body></html>`;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -5758,25 +5941,59 @@ app.get("/api/dashboard/detalle", auth, async (req, res) => {
                   WHEN v.fecha_vencimiento IS NULL THEN NULL
                   ELSE DATEDIFF(v.fecha_vencimiento, CURDATE())
                 END AS dias_para_vencer,
-                COALESCE(kc.costo_unitario, 0) AS costo_unitario,
-                (v.stock * COALESCE(kc.costo_unitario, 0)) AS total_linea
+                COALESCE(
+                  (
+                    SELECT k1.costo_unitario
+                    FROM kardex k1
+                    LEFT JOIN movimiento_encabezado me1 ON me1.id_movimiento=k1.id_movimiento
+                    WHERE k1.id_bodega=v.id_bodega
+                      AND k1.id_producto=v.id_producto
+                      AND k1.delta_cantidad > 0
+                      AND (me1.id_movimiento IS NULL OR me1.tipo_movimiento <> 'AJUSTE')
+                      AND COALESCE(me1.no_contar_dashboard, 0) = 0
+                    ORDER BY k1.creado_en DESC, k1.id_kardex DESC
+                    LIMIT 1
+                  ),
+                  (
+                    SELECT k2.costo_unitario
+                    FROM kardex k2
+                    WHERE k2.id_bodega=v.id_bodega
+                      AND k2.id_producto=v.id_producto
+                      AND k2.delta_cantidad > 0
+                    ORDER BY k2.creado_en DESC, k2.id_kardex DESC
+                    LIMIT 1
+                  ),
+                  0
+                ) AS costo_unitario,
+                (
+                  v.stock * COALESCE(
+                    (
+                      SELECT k1.costo_unitario
+                      FROM kardex k1
+                      LEFT JOIN movimiento_encabezado me1 ON me1.id_movimiento=k1.id_movimiento
+                      WHERE k1.id_bodega=v.id_bodega
+                        AND k1.id_producto=v.id_producto
+                        AND k1.delta_cantidad > 0
+                        AND (me1.id_movimiento IS NULL OR me1.tipo_movimiento <> 'AJUSTE')
+                        AND COALESCE(me1.no_contar_dashboard, 0) = 0
+                      ORDER BY k1.creado_en DESC, k1.id_kardex DESC
+                      LIMIT 1
+                    ),
+                    (
+                      SELECT k2.costo_unitario
+                      FROM kardex k2
+                      WHERE k2.id_bodega=v.id_bodega
+                        AND k2.id_producto=v.id_producto
+                        AND k2.delta_cantidad > 0
+                      ORDER BY k2.creado_en DESC, k2.id_kardex DESC
+                      LIMIT 1
+                    ),
+                    0
+                  )
+                ) AS total_linea
          FROM v_stock_por_lote v
          JOIN bodegas b ON b.id_bodega=v.id_bodega
          JOIN productos p ON p.id_producto=v.id_producto
-         LEFT JOIN (
-           SELECT kx.id_bodega, kx.id_producto, MAX(kx.costo_unitario) AS costo_unitario
-           FROM kardex kx
-           JOIN (
-             SELECT id_bodega, id_producto, MAX(creado_en) AS max_creado
-             FROM kardex
-             WHERE delta_cantidad > 0
-             GROUP BY id_bodega, id_producto
-           ) lk ON lk.id_bodega=kx.id_bodega
-              AND lk.id_producto=kx.id_producto
-              AND lk.max_creado=kx.creado_en
-           WHERE kx.delta_cantidad > 0
-           GROUP BY kx.id_bodega, kx.id_producto
-         ) kc ON kc.id_bodega=v.id_bodega AND kc.id_producto=v.id_producto
          WHERE v.stock > 0
            AND (${whereKind})
            AND (:id_bodega IS NULL OR v.id_bodega=:id_bodega)
@@ -5803,8 +6020,11 @@ app.get("/api/dashboard/detalle", auth, async (req, res) => {
                 ) AS stock_actual
          FROM kardex k
          JOIN productos p ON p.id_producto=k.id_producto
+         LEFT JOIN movimiento_encabezado me ON me.id_movimiento=k.id_movimiento
          WHERE (:id_bodega IS NULL OR k.id_bodega=:id_bodega)
            AND k.creado_en >= DATE_SUB(CURDATE(), INTERVAL :mov_days DAY)
+           AND (me.id_movimiento IS NULL OR me.tipo_movimiento <> 'AJUSTE')
+           AND COALESCE(me.no_contar_dashboard, 0) = 0
          GROUP BY k.id_producto, p.nombre_producto, p.sku
          HAVING SUM(ABS(k.delta_cantidad)) > 0
          ORDER BY cantidad_movimiento ${orderSql}, p.nombre_producto ASC
@@ -5862,6 +6082,7 @@ app.get("/api/reportes/entradas", auth, async (req, res) => {
               b.nombre_bodega,
               m.id_motivo,
               m.nombre_motivo,
+              COALESCE(me.no_contar_dashboard, 0) AS no_contar_dashboard,
               u.id_usuario,
               u.nombre_completo AS usuario_creador,
               md.id_detalle,
@@ -5920,6 +6141,56 @@ app.get("/api/reportes/entradas", auth, async (req, res) => {
     res.status(500).json({ error: String(e.message || e) });
   }
 });
+
+app.post(
+  "/api/entradas/:id_movimiento/dashboard-flag",
+  auth,
+  requirePermission("action.manage_permissions", "administrar exclusion de dashboard en entradas"),
+  async (req, res) => {
+    let conn = null;
+    try {
+      await ensureMovimientoDashboardColumn();
+      await ensureMovimientoPastUpdateTrigger();
+      const id_movimiento = Number(req.params.id_movimiento || 0);
+      if (!id_movimiento) return res.status(400).json({ error: "Movimiento invalido" });
+      const scope = await resolveStockScope(req.user);
+      if (!scope?.is_admin_role) {
+        return res.status(403).json({ error: "Solo un administrador puede excluir entradas antiguas del dashboard." });
+      }
+
+      const no_contar_dashboard = Number(req.body?.no_contar_dashboard) === 1 ? 1 : 0;
+      conn = await pool.getConnection();
+      const [[row]] = await conn.query(
+        `SELECT id_movimiento, tipo_movimiento, id_bodega_destino, id_bodega_origen
+         FROM movimiento_encabezado
+         WHERE id_movimiento=:id_movimiento
+         LIMIT 1`,
+        { id_movimiento }
+      );
+      if (!row) return res.status(404).json({ error: "Movimiento no encontrado" });
+      if (String(row.tipo_movimiento || "").toUpperCase() !== "ENTRADA") {
+        return res.status(400).json({ error: "Solo las entradas pueden excluirse del dashboard." });
+      }
+
+      await conn.query(`SET @allow_dashboard_flag_past_update = 1`);
+      await conn.query(
+        `UPDATE movimiento_encabezado
+         SET no_contar_dashboard=:no_contar_dashboard
+         WHERE id_movimiento=:id_movimiento`,
+        { id_movimiento, no_contar_dashboard }
+      );
+      await conn.query(`SET @allow_dashboard_flag_past_update = 0`);
+
+      await pool.query(`DELETE FROM dashboard_cache_resumen`);
+
+      return res.json({ ok: true, id_movimiento, no_contar_dashboard });
+    } catch (e) {
+      return res.status(500).json({ error: String(e.message || e) });
+    } finally {
+      if (conn) conn.release();
+    }
+  }
+);
 
 app.get("/api/reportes/salidas", auth, async (req, res) => {
   try {
